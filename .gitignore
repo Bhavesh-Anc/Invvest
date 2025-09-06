@@ -1,0 +1,64 @@
+# AI Stock Advisor Pro - Git Ignore
+
+# Security & Secrets
+config/secrets.py
+*.key
+*.pem
+*.env
+.env
+
+# Data & Databases  
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+*.csv
+*.json
+!**/sample*.csv
+
+# Model Files & Cache
+models/
+cache/
+*.pkl
+*.joblib
+*.h5
+
+# Logs & Reports
+logs/
+reports/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+build/
+dist/
+*.egg-info/
+
+# Virtual Environments
+ai_stock_env/
+venv/
+env/
+
+# IDE & Editors
+.vscode/
+.idea/
+*.swp
+
+# OS Generated
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Temporary Files
+*.tmp
+temp/
+
+# Keep important empty directories
+!cache/.gitkeep
+!data/.gitkeep  
+!logs/.gitkeep
+!models/.gitkeep
+!reports/.gitkeep
