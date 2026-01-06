@@ -48,14 +48,20 @@ from utils.model import (
 from components.performance_metrics import display_enhanced_performance_dashboard
 from components.charts import display_advanced_charts
 
+# NEW: Quantitative Finance Modules
+from utils.options_pricing import BlackScholesModel, BinomialTreeModel, GreeksCalculator, OptionsChain
+from utils.options_strategies import OptionsStrategy, StrategyBuilder, calculate_strategy_greeks
+from utils.indian_market import IndianMarketData, MarketCalendar
+from utils.portfolio_analytics import Portfolio, PerformanceMetrics, IndianTaxCalculator
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 warnings.filterwarnings('ignore')
 
 # Enhanced Streamlit page configuration
 st.set_page_config(
-    page_title="AI Stock Advisor Pro - Individual Edition",
-    page_icon="🚀",
+    page_title="Quantitative Finance Master - Indian Stock Market",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -113,26 +119,39 @@ st.markdown("""
 
 def initialize_session_state():
     """Initialize session state variables"""
-    
+
     if 'data_manager' not in st.session_state:
         st.session_state.data_manager = IndividualStockDataManager()
-    
+
     if 'selected_stocks' not in st.session_state:
         st.session_state.selected_stocks = []
-    
+
     if 'training_mode' not in st.session_state:
         st.session_state.training_mode = "single_stock"
-    
+
     if 'available_stocks' not in st.session_state:
         st.session_state.available_stocks = st.session_state.data_manager.get_available_stocks()
-    
+
     if 'prediction_results' not in st.session_state:
         st.session_state.prediction_results = {}
 
+    # NEW: Initialize quantitative finance modules
+    if 'indian_market' not in st.session_state:
+        st.session_state.indian_market = IndianMarketData()
+
+    if 'portfolio' not in st.session_state:
+        st.session_state.portfolio = Portfolio('default')
+
+    if 'bs_model' not in st.session_state:
+        st.session_state.bs_model = BlackScholesModel(risk_free_rate=0.065)
+
+    if 'greeks_calc' not in st.session_state:
+        st.session_state.greeks_calc = GreeksCalculator(st.session_state.bs_model)
+
 def display_main_header():
     """Display main application header"""
-    
-    st.markdown('<h1 class="main-header">🚀 AI Stock Advisor Pro - Individual Edition</h1>', unsafe_allow_html=True)
+
+    st.markdown('<h1 class="main-header">📊 Quantitative Finance Master - Indian Stock Market</h1>', unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -153,18 +172,22 @@ def display_main_header():
 
 def display_sidebar():
     """Display enhanced sidebar"""
-    
+
     st.sidebar.markdown("## 📊 Navigation")
-    
+
     # Main navigation
     page = st.sidebar.selectbox(
         "Select Page",
         [
-            "🏠 Home Dashboard", 
+            "🏠 Home Dashboard",
             "📈 Data Management",
-            "⚙️ Model Training", 
+            "⚙️ Model Training",
             "🔮 Predictions",
             "📊 Performance Analysis",
+            "💼 Portfolio Manager",
+            "📉 Options Pricing",
+            "🎯 Options Strategies",
+            "🇮🇳 Indian Market",
             "🛠️ Settings"
         ]
     )
@@ -1080,9 +1103,509 @@ def display_prediction_results(stock_symbol: str, horizon: str):
             st.plotly_chart(fig, width='stretch')
 
 
+def display_portfolio_manager():
+    """Portfolio Management Page"""
+    st.markdown("## 💼 Portfolio Manager")
+
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "➕ Add Transaction", "📈 Performance", "💰 Tax Analysis"])
+
+    with tab1:
+        st.markdown("### Current Portfolio")
+
+        holdings = st.session_state.portfolio.get_holdings()
+
+        if holdings.empty:
+            st.info("No holdings in portfolio. Add transactions to get started!")
+        else:
+            # Update current prices
+            symbols_to_update = {}
+            for symbol in holdings['symbol'].unique():
+                try:
+                    quote = st.session_state.indian_market.get_live_quote(symbol)
+                    if quote and 'ltp' in quote and quote['ltp']:
+                        symbols_to_update[symbol] = quote['ltp']
+                except:
+                    pass
+
+            if symbols_to_update:
+                st.session_state.portfolio.update_current_prices(symbols_to_update)
+                holdings = st.session_state.portfolio.get_holdings()
+
+            # Calculate portfolio summary
+            summary = st.session_state.portfolio.get_portfolio_summary()
+
+            # Display metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Invested", f"₹{summary['total_invested']:,.2f}")
+            with col2:
+                st.metric("Current Value", f"₹{summary['current_value']:,.2f}")
+            with col3:
+                st.metric("Unrealized P&L", f"₹{summary['unrealized_pnl']:,.2f}",
+                         delta=f"{summary['unrealized_pnl_percent']:.2f}%")
+            with col4:
+                st.metric("Holdings", summary['num_stocks'])
+
+            # Display holdings table
+            display_df = holdings.copy()
+            display_df['Current Value'] = display_df['quantity'] * display_df['current_price'].fillna(display_df['avg_buy_price'])
+            display_df['Invested'] = display_df['quantity'] * display_df['avg_buy_price']
+            display_df['P&L'] = display_df['Current Value'] - display_df['Invested']
+            display_df['P&L %'] = (display_df['P&L'] / display_df['Invested'] * 100).round(2)
+
+            st.dataframe(
+                display_df[['symbol', 'quantity', 'avg_buy_price', 'current_price',
+                           'Invested', 'Current Value', 'P&L', 'P&L %']],
+                use_container_width=True
+            )
+
+            # Sector allocation
+            sector_alloc = st.session_state.portfolio.get_sector_allocation()
+            if not sector_alloc.empty:
+                fig = px.pie(sector_alloc, values='allocation_percent', names='sector',
+                            title='Sector Allocation')
+                st.plotly_chart(fig, use_container_width=True)
+
+    with tab2:
+        st.markdown("### Add Transaction")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            txn_type = st.selectbox("Transaction Type", ["BUY", "SELL"])
+            symbol = st.text_input("Stock Symbol (e.g., RELIANCE, TCS)")
+            quantity = st.number_input("Quantity", min_value=1, value=1)
+
+        with col2:
+            price = st.number_input("Price per Share (₹)", min_value=0.01, value=100.0)
+            txn_date = st.date_input("Transaction Date", value=datetime.now())
+            charges = st.number_input("Charges (₹)", min_value=0.0, value=0.0)
+
+        notes = st.text_area("Notes (optional)")
+
+        if st.button("Add Transaction"):
+            try:
+                st.session_state.portfolio.add_transaction(
+                    symbol=symbol.upper(),
+                    transaction_type=txn_type,
+                    quantity=quantity,
+                    price=price,
+                    transaction_date=txn_date.strftime('%Y-%m-%d'),
+                    charges=charges,
+                    notes=notes
+                )
+                st.success(f"Transaction added: {txn_type} {quantity} {symbol} @ ₹{price}")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error adding transaction: {e}")
+
+    with tab3:
+        st.markdown("### Performance Metrics")
+
+        # Get portfolio returns (simplified - would need historical data)
+        st.info("Performance metrics calculated from portfolio snapshots")
+
+        holdings = st.session_state.portfolio.get_holdings()
+        if not holdings.empty:
+            # Placeholder for performance calculations
+            st.write("**Key Metrics:**")
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Sharpe Ratio", "N/A", help="Requires historical returns data")
+            with col2:
+                st.metric("Max Drawdown", "N/A", help="Requires historical portfolio values")
+            with col3:
+                st.metric("Win Rate", "N/A", help="Based on closed positions")
+
+    with tab4:
+        st.markdown("### Tax Analysis (LTCG/STCG)")
+
+        st.info("Indian Capital Gains Tax Calculator")
+
+        st.write("**Tax Rates:**")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("- **STCG (< 1 year):** 15%")
+        with col2:
+            st.write("- **LTCG (≥ 1 year):** 10% on gains above ₹1 lakh")
+
+        # Get transactions for tax calculation
+        with sqlite3.connect(st.session_state.portfolio.database_path) as conn:
+            transactions_df = pd.read_sql_query("""
+                SELECT * FROM transactions
+                WHERE portfolio_name = ?
+                ORDER BY transaction_date DESC
+            """, conn, params=(st.session_state.portfolio.portfolio_name,))
+
+        if not transactions_df.empty:
+            st.dataframe(transactions_df, use_container_width=True)
+
+            # Calculate tax if user requests
+            if st.button("Calculate Tax Liability"):
+                tax_summary = IndianTaxCalculator.calculate_portfolio_tax(transactions_df)
+
+                st.markdown("### Tax Summary")
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    st.metric("STCG", f"₹{tax_summary['total_stcg']:,.2f}")
+                    st.caption(f"Tax: ₹{tax_summary['stcg_tax']:,.2f}")
+
+                with col2:
+                    st.metric("LTCG", f"₹{tax_summary['total_ltcg']:,.2f}")
+                    st.caption(f"Tax: ₹{tax_summary['ltcg_tax']:,.2f}")
+
+                with col3:
+                    st.metric("Total Tax", f"₹{tax_summary['total_tax']:,.2f}")
+                    st.caption(f"Net Gains: ₹{tax_summary['net_gains']:,.2f}")
+        else:
+            st.info("No transactions found for tax calculation")
+
+
+def display_options_pricing():
+    """Options Pricing Calculator Page"""
+    st.markdown("## 📉 Options Pricing Calculator")
+
+    st.write("Advanced options pricing using Black-Scholes-Merton and Binomial models")
+
+    tab1, tab2 = st.tabs(["📊 Single Option", "⛓️ Options Chain Analysis"])
+
+    with tab1:
+        st.markdown("### Option Price Calculator")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            spot_price = st.number_input("Spot Price (₹)", value=18500.0, min_value=1.0)
+            strike_price = st.number_input("Strike Price (₹)", value=18700.0, min_value=1.0)
+            option_type = st.selectbox("Option Type", ["Call", "Put"])
+
+        with col2:
+            days_to_expiry = st.number_input("Days to Expiry", value=30, min_value=1)
+            volatility = st.slider("Volatility (σ)", min_value=0.05, max_value=1.0, value=0.15, step=0.01)
+            risk_free_rate = st.slider("Risk-Free Rate", min_value=0.01, max_value=0.15, value=0.065, step=0.005)
+
+        with col3:
+            dividend_yield = st.slider("Dividend Yield", min_value=0.0, max_value=0.10, value=0.0, step=0.005)
+            model_type = st.selectbox("Pricing Model", ["Black-Scholes", "Binomial Tree"])
+
+        T = days_to_expiry / 365.0
+
+        if st.button("Calculate Option Price"):
+            try:
+                if model_type == "Black-Scholes":
+                    bs_model = BlackScholesModel(risk_free_rate=risk_free_rate)
+
+                    if option_type.lower() == "call":
+                        price = bs_model.call_price(spot_price, strike_price, T, volatility, risk_free_rate, dividend_yield)
+                    else:
+                        price = bs_model.put_price(spot_price, strike_price, T, volatility, risk_free_rate, dividend_yield)
+
+                    # Calculate Greeks
+                    greeks = st.session_state.greeks_calc.calculate_all_greeks(
+                        spot_price, strike_price, T, volatility, option_type.lower(),
+                        risk_free_rate, dividend_yield
+                    )
+
+                else:  # Binomial
+                    binomial_model = BinomialTreeModel(risk_free_rate=risk_free_rate)
+                    price = binomial_model.price_option(
+                        spot_price, strike_price, T, volatility,
+                        option_type.lower(), 'european', 100, risk_free_rate, dividend_yield
+                    )
+                    greeks = {}
+
+                # Display results
+                st.success(f"**Option Price: ₹{price:.2f}**")
+
+                if greeks:
+                    st.markdown("### Greeks")
+                    col1, col2, col3, col4, col5 = st.columns(5)
+
+                    with col1:
+                        st.metric("Delta (Δ)", f"{greeks['delta']:.4f}")
+                    with col2:
+                        st.metric("Gamma (Γ)", f"{greeks['gamma']:.4f}")
+                    with col3:
+                        st.metric("Theta (Θ)", f"{greeks['theta']:.4f}")
+                    with col4:
+                        st.metric("Vega (ν)", f"{greeks['vega']:.4f}")
+                    with col5:
+                        st.metric("Rho (ρ)", f"{greeks['rho']:.4f}")
+
+                # Intrinsic and time value
+                if option_type.lower() == "call":
+                    intrinsic = max(spot_price - strike_price, 0)
+                else:
+                    intrinsic = max(strike_price - spot_price, 0)
+
+                time_value = price - intrinsic
+
+                st.write(f"**Intrinsic Value:** ₹{intrinsic:.2f}")
+                st.write(f"**Time Value:** ₹{time_value:.2f}")
+                st.write(f"**Moneyness:** {spot_price/strike_price:.4f}")
+
+            except Exception as e:
+                st.error(f"Error calculating option price: {e}")
+
+    with tab2:
+        st.markdown("### Options Chain Analysis")
+        st.info("Options chain analysis requires live options data from NSE. This feature will fetch and analyze complete options chain.")
+
+
+def display_options_strategies():
+    """Options Strategies Builder Page"""
+    st.markdown("## 🎯 Options Trading Strategies")
+
+    st.write("Pre-configured options strategies with payoff diagrams and risk analysis")
+
+    strategy_type = st.selectbox(
+        "Select Strategy",
+        [
+            "Bull Call Spread",
+            "Bear Put Spread",
+            "Long Straddle",
+            "Short Straddle",
+            "Long Strangle",
+            "Iron Condor",
+            "Butterfly Spread",
+            "Covered Call",
+            "Protective Put",
+            "Collar"
+        ]
+    )
+
+    spot_price = st.number_input("Current Spot Price (₹)", value=18500.0, min_value=1.0)
+
+    strategy = None
+
+    if strategy_type == "Bull Call Spread":
+        col1, col2 = st.columns(2)
+        with col1:
+            lower_strike = st.number_input("Lower Strike (Buy)", value=18400.0)
+            lower_premium = st.number_input("Lower Strike Premium", value=150.0)
+        with col2:
+            upper_strike = st.number_input("Upper Strike (Sell)", value=18600.0)
+            upper_premium = st.number_input("Upper Strike Premium", value=75.0)
+
+        if st.button("Build Strategy"):
+            strategy = StrategyBuilder.bull_call_spread(
+                spot_price, lower_strike, upper_strike, lower_premium, upper_premium
+            )
+
+    elif strategy_type == "Bear Put Spread":
+        col1, col2 = st.columns(2)
+        with col1:
+            lower_strike = st.number_input("Lower Strike (Sell)", value=18400.0)
+            lower_premium = st.number_input("Lower Strike Premium", value=80.0)
+        with col2:
+            upper_strike = st.number_input("Upper Strike (Buy)", value=18600.0)
+            upper_premium = st.number_input("Upper Strike Premium", value=180.0)
+
+        if st.button("Build Strategy"):
+            strategy = StrategyBuilder.bear_put_spread(
+                spot_price, lower_strike, upper_strike, lower_premium, upper_premium
+            )
+
+    elif strategy_type == "Long Straddle":
+        strike = st.number_input("Strike Price (ATM)", value=spot_price)
+        col1, col2 = st.columns(2)
+        with col1:
+            call_premium = st.number_input("Call Premium", value=200.0)
+        with col2:
+            put_premium = st.number_input("Put Premium", value=190.0)
+
+        if st.button("Build Strategy"):
+            strategy = StrategyBuilder.long_straddle(spot_price, strike, call_premium, put_premium)
+
+    # Add more strategy builders for other types...
+
+    if strategy:
+        # Display strategy summary
+        summary = strategy.get_strategy_summary()
+
+        st.markdown(f"### {summary['strategy_name']} Analysis")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            cost_label = "Net Cost" if summary['initial_cost'] > 0 else "Net Credit"
+            st.metric(cost_label, f"₹{abs(summary['initial_cost']):.2f}")
+
+        with col2:
+            max_profit = summary['max_profit']
+            if max_profit == np.inf:
+                st.metric("Max Profit", "Unlimited")
+            else:
+                st.metric("Max Profit", f"₹{max_profit:.2f}")
+
+        with col3:
+            max_loss = summary['max_loss']
+            if max_loss == -np.inf:
+                st.metric("Max Loss", "Unlimited")
+            else:
+                st.metric("Max Loss", f"₹{abs(max_loss):.2f}")
+
+        with col4:
+            st.metric("Breakeven Points", len(summary['breakeven_points']))
+
+        # Display breakeven points
+        if summary['breakeven_points']:
+            st.write("**Breakeven Prices:**", ", ".join([f"₹{be:.2f}" for be in summary['breakeven_points']]))
+
+        # Plot payoff diagram
+        st.markdown("### Payoff Diagram")
+        fig = strategy.plot_payoff_diagram()
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Strategy legs
+        st.markdown("### Strategy Legs")
+        legs_df = pd.DataFrame(summary['legs'])
+        st.dataframe(legs_df, use_container_width=True)
+
+
+def display_indian_market():
+    """Indian Market Dashboard"""
+    st.markdown("## 🇮🇳 Indian Stock Market Dashboard")
+
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Market Overview", "📈 Indices", "🔍 Stock Lookup", "📅 Market Calendar"])
+
+    with tab1:
+        st.markdown("### Market Status")
+
+        is_open = st.session_state.indian_market.is_market_open()
+
+        if is_open:
+            st.success("🟢 Market is OPEN")
+        else:
+            st.info("🔴 Market is CLOSED")
+
+        # Major indices
+        st.markdown("### Major Indices")
+
+        indices_to_show = ['NIFTY50', 'NIFTYBANK', 'SENSEX']
+
+        cols = st.columns(len(indices_to_show))
+
+        for i, idx in enumerate(indices_to_show):
+            with cols[i]:
+                try:
+                    quote = st.session_state.indian_market.get_live_quote(
+                        IndianMarketData.NSE_INDICES[idx].replace('^', '')
+                    )
+                    if quote and 'ltp' in quote:
+                        st.metric(
+                            idx,
+                            f"₹{quote['ltp']:,.2f}",
+                            delta=f"{quote.get('change_percent', 0):.2f}%"
+                        )
+                except:
+                    st.metric(idx, "Loading...")
+
+        # F&O stocks
+        st.markdown("### Top F&O Stocks")
+        fno_stocks = st.session_state.indian_market.get_fno_stocks()[:10]
+        st.write(", ".join(fno_stocks))
+
+    with tab2:
+        st.markdown("### Index Data")
+
+        selected_index = st.selectbox("Select Index", list(IndianMarketData.NSE_INDICES.keys()))
+
+        start_date = st.date_input("Start Date", value=datetime.now() - timedelta(days=180))
+        end_date = st.date_input("End Date", value=datetime.now())
+
+        if st.button("Fetch Index Data"):
+            with st.spinner("Fetching data..."):
+                data = st.session_state.indian_market.get_index_data(
+                    selected_index,
+                    start_date.strftime('%Y-%m-%d'),
+                    end_date.strftime('%Y-%m-%d')
+                )
+
+                if not data.empty:
+                    # Plot
+                    fig = go.Figure()
+                    fig.add_trace(go.Candlestick(
+                        x=data['Date'],
+                        open=data['Open'],
+                        high=data['High'],
+                        low=data['Low'],
+                        close=data['Close'],
+                        name=selected_index
+                    ))
+                    fig.update_layout(title=f"{selected_index} Price Chart", xaxis_title="Date", yaxis_title="Price (₹)")
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    st.dataframe(data.tail(20), use_container_width=True)
+                else:
+                    st.error("No data found")
+
+    with tab3:
+        st.markdown("### Stock Information")
+
+        symbol = st.text_input("Enter Stock Symbol (e.g., RELIANCE, TCS)", value="RELIANCE")
+        exchange = st.radio("Exchange", ["NSE", "BSE"], horizontal=True)
+
+        if st.button("Get Stock Info"):
+            with st.spinner("Fetching..."):
+                info = st.session_state.indian_market.get_stock_info(symbol, exchange)
+
+                if info:
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        st.write(f"**Company:** {info.get('company_name', 'N/A')}")
+                        st.write(f"**Sector:** {info.get('sector', 'N/A')}")
+                        st.write(f"**Industry:** {info.get('industry', 'N/A')}")
+                        st.write(f"**Market Cap:** ₹{info.get('market_cap', 0):,.0f}")
+
+                    with col2:
+                        st.write(f"**P/E Ratio:** {info.get('pe_ratio', 'N/A')}")
+                        st.write(f"**P/B Ratio:** {info.get('pb_ratio', 'N/A')}")
+                        st.write(f"**Dividend Yield:** {info.get('dividend_yield', 'N/A')}")
+                        st.write(f"**Beta:** {info.get('beta', 'N/A')}")
+
+                    # Live quote
+                    quote = st.session_state.indian_market.get_live_quote(symbol, exchange)
+                    if quote and 'ltp' in quote:
+                        st.markdown("### Live Quote")
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("LTP", f"₹{quote['ltp']:.2f}")
+                        with col2:
+                            st.metric("Change", f"₹{quote.get('change', 0):.2f}",
+                                     delta=f"{quote.get('change_percent', 0):.2f}%")
+                        with col3:
+                            st.metric("High", f"₹{quote.get('high', 0):.2f}")
+                        with col4:
+                            st.metric("Low", f"₹{quote.get('low', 0):.2f}")
+                else:
+                    st.error("Could not fetch stock information")
+
+    with tab4:
+        st.markdown("### Indian Stock Market Calendar")
+
+        st.write("**Next Trading Days:**")
+        next_day = MarketCalendar.get_next_trading_day()
+        st.write(f"- {next_day.strftime('%Y-%m-%d (%A)')}")
+
+        st.write("**Upcoming F&O Expiries:**")
+        expiries = st.session_state.indian_market.get_next_expiry_dates(3)
+        for expiry in expiries:
+            st.write(f"- {expiry.strftime('%Y-%m-%d (%A)')}")
+
+        st.markdown("### NSE Holidays 2024-2025")
+        holidays_df = pd.DataFrame({
+            'Date': MarketCalendar.NSE_HOLIDAYS[:15],  # Show first 15
+        })
+        st.dataframe(holidays_df, use_container_width=True)
+
+
 def main():
     """Main application function"""
-    
+
     try:
         # Initialize session state
         initialize_session_state()
@@ -1104,6 +1627,14 @@ def main():
             display_predictions()
         elif page == "📊 Performance Analysis":
             display_performance_analysis()
+        elif page == "💼 Portfolio Manager":
+            display_portfolio_manager()
+        elif page == "📉 Options Pricing":
+            display_options_pricing()
+        elif page == "🎯 Options Strategies":
+            display_options_strategies()
+        elif page == "🇮🇳 Indian Market":
+            display_indian_market()
         elif page == "🛠️ Settings":
             display_settings()
         
