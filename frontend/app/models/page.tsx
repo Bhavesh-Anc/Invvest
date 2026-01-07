@@ -1,48 +1,61 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { Brain, TrendingUp, Zap } from 'lucide-react'
 import { formatPercentage } from '@/lib/utils'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-
-// Mock data
-const models = [
-  { name: 'LSTM-Attention', accuracy: 68.4, sharpe: 2.14, trades: 234, status: 'deployed' },
-  { name: 'Transformer', accuracy: 71.2, sharpe: 2.42, trades: 189, status: 'deployed' },
-  { name: 'XGBoost Ensemble', accuracy: 64.8, sharpe: 1.86, trades: 312, status: 'testing' },
-  { name: 'Random Forest', accuracy: 59.2, sharpe: 1.52, trades: 278, status: 'archived' },
-  { name: 'GRU Network', accuracy: 66.7, sharpe: 1.98, trades: 256, status: 'testing' },
-]
-
-const regimeData = [
-  { date: 'Dec', regime: 1 },
-  { date: '8 Dec', regime: 1 },
-  { date: '15 Dec', regime: 2 },
-  { date: '22 Dec', regime: 2 },
-  { date: '29 Dec', regime: 3 },
-  { date: '5 Jan', regime: 3 },
-]
-
-const featureImportance = [
-  { feature: 'RSI', importance: 0.24 },
-  { feature: 'Volume', importance: 0.21 },
-  { feature: 'MACD', importance: 0.18 },
-  { feature: 'Volatility', importance: 0.16 },
-  { feature: 'Momentum', importance: 0.14 },
-  { feature: 'Market Regime', importance: 0.12 },
-  { feature: 'FII/DII Flow', importance: 0.08 },
-]
-
-const sentimentData = [
-  { date: '1 Jan', score: 65 },
-  { date: '2 Jan', score: 72 },
-  { date: '3 Jan', score: 68 },
-  { date: '4 Jan', score: 75 },
-  { date: '5 Jan', score: 82 },
-  { date: '6 Jan', score: 78 },
-  { date: '7 Jan', score: 85 },
-]
+import api from '@/lib/api'
+import Loading from '@/components/ui/Loading'
+import ErrorDisplay from '@/components/ui/ErrorDisplay'
 
 export default function AIModelsPage() {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+  const [models, setModels] = useState<any[]>([])
+  const [regimeData, setRegimeData] = useState<any[]>([])
+  const [featureImportance, setFeatureImportance] = useState<any[]>([])
+  const [sentimentData, setSentimentData] = useState<any[]>([])
+  const [sentimentSummary, setSentimentSummary] = useState<any>(null)
+  const [modelPerformance, setModelPerformance] = useState<any[]>([])
+  const [mlPipeline, setMlPipeline] = useState<any>(null)
+
+  useEffect(() => {
+    fetchAIData()
+  }, [])
+
+  const fetchAIData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Fetch all AI model data in parallel
+      const [leaderboard, regime, features, sentiment, sentSummary, performance, pipeline] = await Promise.all([
+        api.models.getModelLeaderboard(),
+        api.models.getRegimeDetection(60),
+        api.models.getFeatureImportance('XGBoost'),
+        api.models.getSentimentAnalysis(7),
+        api.models.getSentimentSummary(),
+        api.models.getModelPerformance(),
+        api.models.getMLPipeline(),
+      ])
+
+      setModels(leaderboard)
+      setRegimeData(regime)
+      setFeatureImportance(features)
+      setSentimentData(sentiment)
+      setSentimentSummary(sentSummary)
+      setModelPerformance(performance)
+      setMlPipeline(pipeline)
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch AI model data'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) return <Loading message="Loading AI models data..." />
+  if (error) return <ErrorDisplay error={error} onRetry={fetchAIData} />
+  if (!models || models.length === 0) return null
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -191,174 +204,108 @@ export default function AIModelsPage() {
           </LineChart>
         </ResponsiveContainer>
 
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 bg-dark-700/30 rounded-lg">
-            <p className="text-sm text-muted-foreground mb-1">Current Sentiment</p>
-            <h3 className="text-2xl font-bold text-success">85/100</h3>
-            <p className="text-xs text-muted-foreground">Very Bullish</p>
-          </div>
+        {sentimentSummary && (
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 bg-dark-700/30 rounded-lg">
+              <p className="text-sm text-muted-foreground mb-1">Current Sentiment</p>
+              <h3 className={`text-2xl font-bold ${sentimentSummary.currentScore >= 70 ? 'text-success' : sentimentSummary.currentScore >= 50 ? 'text-warning' : 'text-danger'}`}>
+                {sentimentSummary.currentScore || 0}/100
+              </h3>
+              <p className="text-xs text-muted-foreground">{sentimentSummary.sentiment || 'Neutral'}</p>
+            </div>
 
-          <div className="p-4 bg-dark-700/30 rounded-lg">
-            <p className="text-sm text-muted-foreground mb-1">News Sources</p>
-            <h3 className="text-2xl font-bold text-white">1,247</h3>
-            <p className="text-xs text-muted-foreground">Articles analyzed today</p>
-          </div>
+            <div className="p-4 bg-dark-700/30 rounded-lg">
+              <p className="text-sm text-muted-foreground mb-1">News Sources</p>
+              <h3 className="text-2xl font-bold text-white">{sentimentSummary.articlesAnalyzed?.toLocaleString() || 0}</h3>
+              <p className="text-xs text-muted-foreground">Articles analyzed today</p>
+            </div>
 
-          <div className="p-4 bg-dark-700/30 rounded-lg">
-            <p className="text-sm text-muted-foreground mb-1">Sentiment Accuracy</p>
-            <h3 className="text-2xl font-bold text-purple-500">73.2%</h3>
-            <p className="text-xs text-muted-foreground">Backtested correlation</p>
+            <div className="p-4 bg-dark-700/30 rounded-lg">
+              <p className="text-sm text-muted-foreground mb-1">Sentiment Accuracy</p>
+              <h3 className="text-2xl font-bold text-purple-500">{sentimentSummary.accuracy || 0}%</h3>
+              <p className="text-xs text-muted-foreground">Backtested correlation</p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Model Performance Comparison */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* LSTM-Attention */}
-        <div className="card-glass rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-white">LSTM-Attention</h3>
-            <span className="px-2 py-1 bg-success/20 text-success text-xs font-medium rounded">Active</span>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs text-muted-foreground">Accuracy</span>
-                <span className="text-xs font-medium text-success">68.4%</span>
+      {modelPerformance && modelPerformance.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {modelPerformance.slice(0, 3).map((model: any, index: number) => (
+            <div key={index} className="card-glass rounded-xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-white">{model.name}</h3>
+                <span className={`px-2 py-1 text-xs font-medium rounded ${
+                  model.status === 'deployed' || model.status === 'Active' ? 'bg-success/20 text-success' :
+                  model.status === 'testing' || model.status === 'Testing' ? 'bg-blue-500/20 text-blue-500' :
+                  'bg-muted/20 text-muted-foreground'
+                }`}>
+                  {model.status}
+                </span>
               </div>
-              <div className="w-full bg-dark-700 rounded-full h-2">
-                <div className="bg-gradient-to-r from-success to-blue-500 h-2 rounded-full" style={{ width: '68.4%' }}></div>
+
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs text-muted-foreground">Accuracy</span>
+                    <span className={`text-xs font-medium ${model.accuracy > 65 ? 'text-success' : model.accuracy > 60 ? 'text-warning' : 'text-muted-foreground'}`}>
+                      {model.accuracy}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-dark-700 rounded-full h-2">
+                    <div className="bg-gradient-to-r from-success to-blue-500 h-2 rounded-full" style={{ width: `${model.accuracy}%` }}></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs text-muted-foreground">Sharpe Ratio</span>
+                    <span className="text-xs font-medium text-blue-500">{model.sharpe}</span>
+                  </div>
+                  <div className="w-full bg-dark-700 rounded-full h-2">
+                    <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full" style={{ width: `${Math.min(100, (model.sharpe / 2.5) * 100)}%` }}></div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-dark-700">
+                  <p className="text-xs text-muted-foreground">{model.bestFor || 'General purpose'}</p>
+                </div>
               </div>
             </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs text-muted-foreground">Sharpe Ratio</span>
-                <span className="text-xs font-medium text-blue-500">2.14</span>
-              </div>
-              <div className="w-full bg-dark-700 rounded-full h-2">
-                <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full" style={{ width: '85.6%' }}></div>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-dark-700">
-              <p className="text-xs text-muted-foreground">Best for: Trending markets</p>
-            </div>
-          </div>
+          ))}
         </div>
-
-        {/* Transformer */}
-        <div className="card-glass rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-white">Transformer</h3>
-            <span className="px-2 py-1 bg-success/20 text-success text-xs font-medium rounded">Active</span>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs text-muted-foreground">Accuracy</span>
-                <span className="text-xs font-medium text-success">71.2%</span>
-              </div>
-              <div className="w-full bg-dark-700 rounded-full h-2">
-                <div className="bg-gradient-to-r from-success to-blue-500 h-2 rounded-full" style={{ width: '71.2%' }}></div>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs text-muted-foreground">Sharpe Ratio</span>
-                <span className="text-xs font-medium text-blue-500">2.42</span>
-              </div>
-              <div className="w-full bg-dark-700 rounded-full h-2">
-                <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full" style={{ width: '96.8%' }}></div>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-dark-700">
-              <p className="text-xs text-muted-foreground">Best for: Complex patterns</p>
-            </div>
-          </div>
-        </div>
-
-        {/* XGBoost Ensemble */}
-        <div className="card-glass rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-white">XGBoost Ensemble</h3>
-            <span className="px-2 py-1 bg-blue-500/20 text-blue-500 text-xs font-medium rounded">Testing</span>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs text-muted-foreground">Accuracy</span>
-                <span className="text-xs font-medium text-warning">64.8%</span>
-              </div>
-              <div className="w-full bg-dark-700 rounded-full h-2">
-                <div className="bg-gradient-to-r from-warning to-blue-500 h-2 rounded-full" style={{ width: '64.8%' }}></div>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs text-muted-foreground">Sharpe Ratio</span>
-                <span className="text-xs font-medium text-blue-500">1.86</span>
-              </div>
-              <div className="w-full bg-dark-700 rounded-full h-2">
-                <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full" style={{ width: '74.4%' }}></div>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-dark-700">
-              <p className="text-xs text-muted-foreground">Best for: Mean reversion</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* ML Pipeline Info */}
-      <div className="card-glass rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">ML Pipeline Status</h2>
+      {mlPipeline && (
+        <div className="card-glass rounded-xl p-6">
+          <h2 className="text-lg font-semibold text-white mb-4">ML Pipeline Status</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="p-4 bg-dark-700/30 rounded-lg border-l-4 border-purple-500">
-            <p className="text-xs text-muted-foreground mb-1">Data Ingestion</p>
-            <p className="text-sm font-medium text-white">Real-time</p>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="w-2 h-2 rounded-full bg-success animate-pulse"></div>
-              <span className="text-xs text-success">Active</span>
-            </div>
-          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {mlPipeline.stages && mlPipeline.stages.map((stage: any, index: number) => {
+              const borderColors = ['border-purple-500', 'border-blue-500', 'border-warning', 'border-success']
+              const statusColors = {
+                Active: 'success',
+                Scheduled: 'warning',
+                Idle: 'muted-foreground'
+              }
+              const statusColor = statusColors[stage.status as keyof typeof statusColors] || 'success'
 
-          <div className="p-4 bg-dark-700/30 rounded-lg border-l-4 border-blue-500">
-            <p className="text-xs text-muted-foreground mb-1">Feature Engineering</p>
-            <p className="text-sm font-medium text-white">150+ features</p>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="w-2 h-2 rounded-full bg-success animate-pulse"></div>
-              <span className="text-xs text-success">Active</span>
-            </div>
-          </div>
-
-          <div className="p-4 bg-dark-700/30 rounded-lg border-l-4 border-warning">
-            <p className="text-xs text-muted-foreground mb-1">Model Training</p>
-            <p className="text-sm font-medium text-white">Daily retraining</p>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="w-2 h-2 rounded-full bg-warning animate-pulse"></div>
-              <span className="text-xs text-warning">Scheduled</span>
-            </div>
-          </div>
-
-          <div className="p-4 bg-dark-700/30 rounded-lg border-l-4 border-success">
-            <p className="text-xs text-muted-foreground mb-1">Inference</p>
-            <p className="text-sm font-medium text-white">Every 5 min</p>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="w-2 h-2 rounded-full bg-success animate-pulse"></div>
-              <span className="text-xs text-success">Active</span>
-            </div>
+              return (
+                <div key={index} className={`p-4 bg-dark-700/30 rounded-lg border-l-4 ${borderColors[index % 4]}`}>
+                  <p className="text-xs text-muted-foreground mb-1">{stage.name}</p>
+                  <p className="text-sm font-medium text-white">{stage.description}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className={`w-2 h-2 rounded-full bg-${statusColor} ${stage.status === 'Active' || stage.status === 'Scheduled' ? 'animate-pulse' : ''}`}></div>
+                    <span className={`text-xs text-${statusColor}`}>{stage.status}</span>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

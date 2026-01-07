@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   TrendingUp, TrendingDown, Activity, Target,
   AlertCircle, Search, RefreshCw, ChevronDown,
@@ -13,190 +13,57 @@ import {
 } from 'recharts'
 import MetricCard from '@/components/ui/MetricCard'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
+import api from '@/lib/api'
+import Loading from '@/components/ui/Loading'
+import ErrorDisplay from '@/components/ui/ErrorDisplay'
 
 export default function OptionsAnalyticsPage() {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
   const [selectedStock, setSelectedStock] = useState('NIFTY')
   const [selectedExpiry, setSelectedExpiry] = useState('25-JAN-2024')
+  const [greeksSummary, setGreeksSummary] = useState<any>(null)
+  const [optionsChain, setOptionsChain] = useState<any[]>([])
+  const [ivSkew, setIvSkew] = useState<any[]>([])
+  const [greeksEvolution, setGreeksEvolution] = useState<any[]>([])
+  const [oiDistribution, setOiDistribution] = useState<any[]>([])
+  const [pcrAnalysis, setPcrAnalysis] = useState<any>(null)
 
-  // Greeks summary
-  const greeksSummary = {
-    portfolioDelta: 145.8,
-    portfolioGamma: 0.082,
-    portfolioTheta: -2847.50,
-    portfolioVega: 18250.00,
-    portfolioRho: 1240.00,
+  useEffect(() => {
+    fetchOptionsData()
+  }, [selectedStock, selectedExpiry])
+
+  const fetchOptionsData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Fetch all options data in parallel
+      const [greeks, chain, skew, evolution, oiDist, pcr] = await Promise.all([
+        api.options.getGreeksSummary(),
+        api.options.getOptionsChain(selectedStock, selectedExpiry),
+        api.options.getIVSkew(selectedStock, selectedExpiry),
+        api.options.getGreeksEvolution(),
+        api.options.getOIDistribution(selectedStock, selectedExpiry),
+        api.options.getPCRAnalysis(selectedStock, selectedExpiry),
+      ])
+
+      setGreeksSummary(greeks)
+      setOptionsChain(chain)
+      setIvSkew(skew)
+      setGreeksEvolution(evolution)
+      setOiDistribution(oiDist)
+      setPcrAnalysis(pcr)
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch options data'))
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Options chain data
-  const optionsChain = [
-    {
-      strike: 21600,
-      callOI: 45620,
-      callOIChange: 12.5,
-      callVolume: 18950,
-      callLTP: 385.50,
-      callIV: 14.2,
-      callDelta: 0.68,
-      callGamma: 0.0024,
-      callTheta: -42.5,
-      callVega: 125.0,
-      putOI: 28340,
-      putOIChange: -5.2,
-      putVolume: 9820,
-      putLTP: 92.75,
-      putIV: 15.8,
-      putDelta: -0.32,
-      putGamma: 0.0024,
-      putTheta: -38.2,
-      putVega: 118.0,
-    },
-    {
-      strike: 21700,
-      callOI: 52340,
-      callOIChange: 18.2,
-      callVolume: 24580,
-      callLTP: 320.25,
-      callIV: 13.8,
-      callDelta: 0.58,
-      callGamma: 0.0028,
-      callTheta: -48.5,
-      callVega: 142.0,
-      putOI: 38920,
-      putOIChange: 8.4,
-      putVolume: 15240,
-      putLTP: 125.50,
-      putIV: 16.2,
-      putDelta: -0.42,
-      putGamma: 0.0028,
-      putTheta: -44.8,
-      putVega: 138.0,
-    },
-    {
-      strike: 21800,
-      callOI: 68750,
-      callOIChange: 25.6,
-      callVolume: 32840,
-      callLTP: 265.75,
-      callIV: 13.5,
-      callDelta: 0.52,
-      callGamma: 0.0032,
-      callTheta: -52.8,
-      callVega: 158.0,
-      putOI: 54280,
-      putOIChange: 15.8,
-      putVolume: 22680,
-      putLTP: 168.25,
-      putIV: 16.8,
-      putDelta: -0.48,
-      putGamma: 0.0032,
-      putTheta: -50.2,
-      putVega: 154.0,
-    },
-    {
-      strike: 21900,
-      callOI: 82450,
-      callOIChange: 32.4,
-      callVolume: 41250,
-      callLTP: 218.50,
-      callIV: 13.2,
-      callDelta: 0.45,
-      callGamma: 0.0034,
-      callTheta: -56.2,
-      callVega: 168.0,
-      putOI: 72840,
-      putOIChange: 28.5,
-      putVolume: 31450,
-      putLTP: 220.75,
-      putIV: 17.5,
-      putDelta: -0.55,
-      putGamma: 0.0034,
-      putTheta: -54.8,
-      putVega: 165.0,
-    },
-    {
-      strike: 22000,
-      callOI: 125680,
-      callOIChange: 45.8,
-      callVolume: 58920,
-      callLTP: 178.25,
-      callIV: 13.0,
-      callDelta: 0.38,
-      callGamma: 0.0032,
-      callTheta: -54.5,
-      callVega: 162.0,
-      putOI: 142500,
-      putOIChange: 52.4,
-      putVolume: 64280,
-      putLTP: 280.50,
-      putIV: 18.2,
-      putDelta: -0.62,
-      putGamma: 0.0032,
-      putTheta: -58.2,
-      putVega: 172.0,
-    },
-    {
-      strike: 22100,
-      callOI: 98240,
-      callOIChange: 22.8,
-      callVolume: 38450,
-      callLTP: 142.75,
-      callIV: 12.8,
-      callDelta: 0.32,
-      callGamma: 0.0028,
-      callTheta: -48.2,
-      callVega: 145.0,
-      putOI: 118640,
-      putOIChange: 38.6,
-      putVolume: 48920,
-      putLTP: 345.25,
-      putIV: 19.0,
-      putDelta: -0.68,
-      putGamma: 0.0028,
-      putTheta: -52.5,
-      putVega: 152.0,
-    },
-  ]
-
-  // ATM strike (closest to current price)
-  const currentPrice = 21894
-  const atmStrike = 21900
-
-  // IV Skew data
-  const ivSkewData = [
-    { strike: 21600, callIV: 14.2, putIV: 15.8, moneyness: -1.34 },
-    { strike: 21700, callIV: 13.8, putIV: 16.2, moneyness: -0.89 },
-    { strike: 21800, callIV: 13.5, putIV: 16.8, moneyness: -0.43 },
-    { strike: 21900, callIV: 13.2, putIV: 17.5, moneyness: 0.03 },
-    { strike: 22000, callIV: 13.0, putIV: 18.2, moneyness: 0.48 },
-    { strike: 22100, callIV: 12.8, putIV: 19.0, moneyness: 0.94 },
-  ]
-
-  // Greeks evolution (intraday)
-  const greeksEvolution = [
-    { time: '09:30', delta: 142.5, gamma: 0.078, theta: -2650, vega: 17800 },
-    { time: '10:30', delta: 144.2, gamma: 0.080, theta: -2720, vega: 17950 },
-    { time: '11:30', delta: 145.8, gamma: 0.082, theta: -2785, vega: 18100 },
-    { time: '12:30', delta: 146.5, gamma: 0.083, theta: -2820, vega: 18200 },
-    { time: '13:30', delta: 145.9, gamma: 0.082, theta: -2840, vega: 18230 },
-    { time: '14:30', delta: 145.8, gamma: 0.082, theta: -2847, vega: 18250 },
-  ]
-
-  // Put-Call Ratio data
-  const pcrData = [
-    { strike: 21600, pcr: 0.62, type: 'Bullish' },
-    { strike: 21700, pcr: 0.74, type: 'Neutral' },
-    { strike: 21800, pcr: 0.79, type: 'Neutral' },
-    { strike: 21900, pcr: 0.88, type: 'Neutral' },
-    { strike: 22000, pcr: 1.13, type: 'Bearish' },
-    { strike: 22100, pcr: 1.21, type: 'Bearish' },
-  ]
-
-  // Open Interest chart data
-  const oiChartData = optionsChain.map(row => ({
-    strike: row.strike,
-    callOI: row.callOI,
-    putOI: row.putOI,
-  }))
+  if (loading) return <Loading message="Loading options analytics..." />
+  if (error) return <ErrorDisplay error={error} onRetry={fetchOptionsData} />
+  if (!greeksSummary || !optionsChain) return null
 
   return (
     <div className="space-y-6">

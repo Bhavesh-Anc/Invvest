@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Plus, Trash2, TrendingUp, TrendingDown, Activity,
   Target, Shield, Calendar, DollarSign, AlertCircle,
@@ -13,6 +13,9 @@ import {
 } from 'recharts'
 import MetricCard from '@/components/ui/MetricCard'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
+import api from '@/lib/api'
+import Loading from '@/components/ui/Loading'
+import ErrorDisplay from '@/components/ui/ErrorDisplay'
 
 interface StrategyLeg {
   id: string
@@ -25,201 +28,46 @@ interface StrategyLeg {
 }
 
 export default function StrategyBuilderPage() {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
   const [legs, setLegs] = useState<StrategyLeg[]>([])
+  const [templates, setTemplates] = useState<any[]>([])
+  const [payoffData, setPayoffData] = useState<any[]>([])
+  const [expiryCalendar, setExpiryCalendar] = useState<any[]>([])
+  const [greeksOptimization, setGreeksOptimization] = useState<any>(null)
 
-  // Strategy templates
-  const templates = [
-    {
-      id: 'bull-call-spread',
-      name: 'Bull Call Spread',
-      description: 'Limited profit, limited loss bullish strategy',
-      legs: [
-        { type: 'CE', action: 'BUY', strike: 21800, quantity: 50, premium: 265.75 },
-        { type: 'CE', action: 'SELL', strike: 22000, quantity: 50, premium: 178.25 },
-      ],
-      maxProfit: 437500,
-      maxLoss: 437500,
-      breakeven: 21887.5,
-      sentiment: 'Bullish',
-      marginRequired: 87500,
-    },
-    {
-      id: 'bear-put-spread',
-      name: 'Bear Put Spread',
-      description: 'Limited profit, limited loss bearish strategy',
-      legs: [
-        { type: 'PE', action: 'BUY', strike: 22000, quantity: 50, premium: 280.50 },
-        { type: 'PE', action: 'SELL', strike: 21800, quantity: 50, premium: 168.25 },
-      ],
-      maxProfit: 438750,
-      maxLoss: 561250,
-      breakeven: 21887.75,
-      sentiment: 'Bearish',
-      marginRequired: 112250,
-    },
-    {
-      id: 'iron-condor',
-      name: 'Iron Condor',
-      description: 'Profit from low volatility, neutral outlook',
-      legs: [
-        { type: 'CE', action: 'SELL', strike: 22000, quantity: 50, premium: 178.25 },
-        { type: 'CE', action: 'BUY', strike: 22100, quantity: 50, premium: 142.75 },
-        { type: 'PE', action: 'SELL', strike: 21800, quantity: 50, premium: 168.25 },
-        { type: 'PE', action: 'BUY', strike: 21700, quantity: 50, premium: 125.50 },
-      ],
-      maxProfit: 195625,
-      maxLoss: 304375,
-      breakeven: 21840.87,
-      sentiment: 'Neutral',
-      marginRequired: 250000,
-    },
-    {
-      id: 'long-straddle',
-      name: 'Long Straddle',
-      description: 'Profit from high volatility in either direction',
-      legs: [
-        { type: 'CE', action: 'BUY', strike: 21900, quantity: 50, premium: 218.50 },
-        { type: 'PE', action: 'BUY', strike: 21900, quantity: 50, premium: 220.75 },
-      ],
-      maxProfit: Infinity,
-      maxLoss: 1096250,
-      breakeven: 21900,
-      sentiment: 'High Volatility',
-      marginRequired: 1096250,
-    },
-    {
-      id: 'short-strangle',
-      name: 'Short Strangle',
-      description: 'Profit from low volatility, range-bound market',
-      legs: [
-        { type: 'CE', action: 'SELL', strike: 22000, quantity: 50, premium: 178.25 },
-        { type: 'PE', action: 'SELL', strike: 21800, quantity: 50, premium: 168.25 },
-      ],
-      maxProfit: 865000,
-      maxLoss: Infinity,
-      breakeven: 21800,
-      sentiment: 'Low Volatility',
-      marginRequired: 280000,
-    },
-    {
-      id: 'butterfly-spread',
-      name: 'Butterfly Spread',
-      description: 'Limited risk, limited profit from minimal movement',
-      legs: [
-        { type: 'CE', action: 'BUY', strike: 21800, quantity: 50, premium: 265.75 },
-        { type: 'CE', action: 'SELL', strike: 21900, quantity: 100, premium: 218.50 },
-        { type: 'CE', action: 'BUY', strike: 22000, quantity: 50, premium: 178.25 },
-      ],
-      maxProfit: 236250,
-      maxLoss: 263750,
-      breakeven: 21852.75,
-      sentiment: 'Neutral',
-      marginRequired: 263750,
-    },
-  ]
+  useEffect(() => {
+    fetchStrategyData()
+  }, [])
 
-  // Payoff diagram data (for Bull Call Spread example)
-  const payoffData = [
-    { price: 21400, pnl: -87.5 },
-    { price: 21500, pnl: -87.5 },
-    { price: 21600, pnl: -87.5 },
-    { price: 21700, pnl: -87.5 },
-    { price: 21800, pnl: -87.5 },
-    { price: 21850, pnl: -37.5 },
-    { price: 21887.5, pnl: 0 },
-    { price: 21900, pnl: 12.5 },
-    { price: 21950, pnl: 62.5 },
-    { price: 22000, pnl: 112.5 },
-    { price: 22100, pnl: 112.5 },
-    { price: 22200, pnl: 112.5 },
-    { price: 22300, pnl: 112.5 },
-    { price: 22400, pnl: 112.5 },
-  ]
+  const fetchStrategyData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
 
-  // Expiry calendar for Indian market
-  const expiryCalendar = [
-    { date: '25-JAN-2024', type: 'Weekly', daysLeft: 4, instruments: ['NIFTY', 'BANKNIFTY', 'FINNIFTY'] },
-    { date: '31-JAN-2024', type: 'Monthly', daysLeft: 10, instruments: ['All Stocks', 'Indices'] },
-    { date: '01-FEB-2024', type: 'Weekly', daysLeft: 11, instruments: ['NIFTY', 'BANKNIFTY', 'FINNIFTY'] },
-    { date: '08-FEB-2024', type: 'Weekly', daysLeft: 18, instruments: ['NIFTY', 'BANKNIFTY', 'FINNIFTY'] },
-    { date: '29-FEB-2024', type: 'Monthly', daysLeft: 39, instruments: ['All Stocks', 'Indices'] },
-  ]
+      // Fetch all strategy data in parallel
+      const [templatesData, payoff, calendar, greeksOpt] = await Promise.all([
+        api.strategy.getTemplates(),
+        api.strategy.getPayoffDiagram('bull-call-spread'),
+        api.strategy.getExpiryCalendar(),
+        api.strategy.getGreeksOptimization(),
+      ])
 
-  // Greeks neutral optimization
-  const greeksOptimization = {
-    currentDelta: 145.8,
-    targetDelta: 0,
-    currentGamma: 0.082,
-    targetGamma: 0,
-    currentTheta: -2847,
-    targetTheta: 0,
-    currentVega: 18250,
-    targetVega: 0,
-    suggestedAdjustment: 'Sell 146 units of underlying or sell 3 ATM Call options',
-  }
-
-  const loadTemplate = (template: any) => {
-    const newLegs: StrategyLeg[] = template.legs.map((leg: any, index: number) => ({
-      id: `leg-${Date.now()}-${index}`,
-      type: leg.type as 'CE' | 'PE',
-      action: leg.action as 'BUY' | 'SELL',
-      strike: leg.strike,
-      quantity: leg.quantity,
-      premium: leg.premium,
-      expiry: '25-JAN-2024',
-    }))
-    setLegs(newLegs)
-    setSelectedTemplate(template.id)
-  }
-
-  const addLeg = () => {
-    const newLeg: StrategyLeg = {
-      id: `leg-${Date.now()}`,
-      type: 'CE',
-      action: 'BUY',
-      strike: 21900,
-      quantity: 50,
-      premium: 218.50,
-      expiry: '25-JAN-2024',
-    }
-    setLegs([...legs, newLeg])
-  }
-
-  const removeLeg = (id: string) => {
-    setLegs(legs.filter(leg => leg.id !== id))
-  }
-
-  const updateLeg = (id: string, field: keyof StrategyLeg, value: any) => {
-    setLegs(legs.map(leg => (leg.id === id ? { ...leg, [field]: value } : leg)))
-  }
-
-  // Calculate strategy metrics
-  const calculateMetrics = () => {
-    let totalCost = 0
-    let totalCredit = 0
-
-    legs.forEach(leg => {
-      const amount = leg.premium * leg.quantity
-      if (leg.action === 'BUY') {
-        totalCost += amount
-      } else {
-        totalCredit += amount
-      }
-    })
-
-    const netDebit = totalCost - totalCredit
-    const margin = netDebit > 0 ? netDebit : totalCredit * 0.2 // Simplified margin calculation
-
-    return {
-      totalCost,
-      totalCredit,
-      netDebit,
-      margin,
+      setTemplates(templatesData)
+      setPayoffData(payoff)
+      setExpiryCalendar(calendar)
+      setGreeksOptimization(greeksOpt)
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch strategy data'))
+    } finally {
+      setLoading(false)
     }
   }
 
-  const metrics = calculateMetrics()
+  if (loading) return <Loading message="Loading strategy builder..." />
+  if (error) return <ErrorDisplay error={error} onRetry={fetchStrategyData} />
+  if (!templates || templates.length === 0) return null
 
   return (
     <div className="space-y-6">

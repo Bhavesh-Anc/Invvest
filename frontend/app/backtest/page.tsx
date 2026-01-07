@@ -1,57 +1,61 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { Settings, Play, Download, TrendingUp } from 'lucide-react'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-
-// Mock data
-const equityCurveData = [
-  { date: '1 Jan', equity: 1000000, benchmark: 1000000 },
-  { date: '15 Jan', equity: 1025000, benchmark: 1015000 },
-  { date: '1 Feb', equity: 1048000, benchmark: 1028000 },
-  { date: '15 Feb', equity: 1072000, benchmark: 1042000 },
-  { date: '1 Mar', equity: 1095000, benchmark: 1055000 },
-  { date: '15 Mar', equity: 1118000, benchmark: 1068000 },
-  { date: '1 Apr', equity: 1142000, benchmark: 1082000 },
-  { date: '15 Apr', equity: 1165000, benchmark: 1095000 },
-]
-
-const monthlyReturnsData = [
-  { month: 'Jan', return: 4.8 },
-  { month: 'Feb', return: -1.2 },
-  { month: 'Mar', return: 5.6 },
-  { month: 'Apr', return: 2.8 },
-  { month: 'May', return: 3.2 },
-  { month: 'Jun', return: -0.5 },
-  { month: 'Jul', return: 4.1 },
-  { month: 'Aug', return: 6.2 },
-]
-
-const returnDistributionData = [
-  { range: '-10% to -5%', count: 2 },
-  { range: '-5% to 0%', count: 8 },
-  { range: '0% to 5%', count: 18 },
-  { range: '5% to 10%', count: 7 },
-  { range: '10%+', count: 1 },
-]
-
-const walkForwardResults = [
-  { period: 'Jan-Feb 2025', inSample: 'Pass', outSample: 'Pass', sharpe: 1.92, result: 'pass' },
-  { period: 'Mar-Apr 2025', inSample: 'Pass', outSample: 'Pass', sharpe: 1.76, result: 'pass' },
-  { period: 'May-Jun 2025', inSample: 'Pass', outSample: 'Fail', sharpe: 0.84, result: 'fail' },
-  { period: 'Jul-Aug 2025', inSample: 'Pass', outSample: 'Pass', sharpe: 2.12, result: 'pass' },
-  { period: 'Sep-Oct 2025', inSample: 'Pass', outSample: 'Pass', sharpe: 1.88, result: 'pass' },
-  { period: 'Nov-Dec 2025', inSample: 'Pass', outSample: 'Pass', sharpe: 1.94, result: 'pass' },
-]
-
-const recentTrades = [
-  { time: '14:23:45', symbol: 'INFY', action: 'BUY', qty: 100, price: 1478.90, status: 'Filled' },
-  { time: '14:18:32', symbol: 'TCS', action: 'SELL', qty: 50, price: 3891.20, status: 'Filled' },
-  { time: '13:45:18', symbol: 'RELIANCE', action: 'BUY', qty: 75, price: 2876.50, status: 'Filled' },
-  { time: '13:22:05', symbol: 'HDFCBANK', action: 'SELL', qty: 120, price: 1628.20, status: 'Filled' },
-]
+import api from '@/lib/api'
+import Loading from '@/components/ui/Loading'
+import ErrorDisplay from '@/components/ui/ErrorDisplay'
 
 export default function BacktestingPage() {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+  const [config, setConfig] = useState<any>(null)
+  const [equityCurveData, setEquityCurveData] = useState<any[]>([])
+  const [performanceMetrics, setPerformanceMetrics] = useState<any>(null)
+  const [monthlyReturnsData, setMonthlyReturnsData] = useState<any[]>([])
+  const [returnDistributionData, setReturnDistributionData] = useState<any[]>([])
+  const [walkForwardResults, setWalkForwardResults] = useState<any[]>([])
+  const [recentTrades, setRecentTrades] = useState<any[]>([])
+
+  useEffect(() => {
+    fetchBacktestData()
+  }, [])
+
+  const fetchBacktestData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Fetch all backtesting data in parallel
+      const [configData, equityCurve, metrics, monthlyReturns, returnDist, walkForward, paperTrades] = await Promise.all([
+        api.backtest.getConfig(),
+        api.backtest.getEquityCurve(180),
+        api.backtest.getPerformanceMetrics(),
+        api.backtest.getMonthlyReturns(6),
+        api.backtest.getReturnDistribution(),
+        api.backtest.getWalkForward(),
+        api.backtest.getPaperTrades(20),
+      ])
+
+      setConfig(configData)
+      setEquityCurveData(equityCurve)
+      setPerformanceMetrics(metrics)
+      setMonthlyReturnsData(monthlyReturns)
+      setReturnDistributionData(returnDist)
+      setWalkForwardResults(walkForward)
+      setRecentTrades(paperTrades)
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch backtesting data'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) return <Loading message="Loading backtesting data..." />
+  if (error) return <ErrorDisplay error={error} onRetry={fetchBacktestData} />
+  if (!performanceMetrics) return null
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -73,53 +77,55 @@ export default function BacktestingPage() {
       </div>
 
       {/* Transaction Cost & Slippage Configuration */}
-      <div className="card-glass rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-6">Transaction Cost & Slippage Modeling</h2>
+      {config && (
+        <div className="card-glass rounded-xl p-6">
+          <h2 className="text-lg font-semibold text-white mb-6">Transaction Cost & Slippage Modeling</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <label className="text-sm font-medium text-muted-foreground mb-2 block">Slippage (%)</label>
-            <div className="flex items-center gap-4">
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                defaultValue="0.15"
-                className="flex-1 h-2 bg-gradient-to-r from-danger to-white rounded-full appearance-none cursor-pointer"
-                style={{
-                  background: 'linear-gradient(to right, #ef4444 0%, #fff 100%)'
-                }}
-              />
-              <span className="text-sm font-medium text-white min-w-[60px]">0.15%</span>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <label className="text-sm font-medium text-muted-foreground mb-2 block">Slippage (%)</label>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  defaultValue={config.slippage || 0.15}
+                  className="flex-1 h-2 bg-gradient-to-r from-danger to-white rounded-full appearance-none cursor-pointer"
+                  style={{
+                    background: 'linear-gradient(to right, #ef4444 0%, #fff 100%)'
+                  }}
+                />
+                <span className="text-sm font-medium text-white min-w-[60px]">{config.slippage || 0.15}%</span>
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="text-sm font-medium text-muted-foreground mb-2 block">Commission (%)</label>
-            <div className="flex items-center gap-4">
-              <input
-                type="range"
-                min="0"
-                max="0.5"
-                step="0.01"
-                defaultValue="0.03"
-                className="flex-1 h-2 bg-gradient-to-r from-danger to-white rounded-full appearance-none cursor-pointer"
-              />
-              <span className="text-sm font-medium text-white min-w-[60px]">0.03%</span>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground mb-2 block">Commission (%)</label>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min="0"
+                  max="0.5"
+                  step="0.01"
+                  defaultValue={config.commission || 0.03}
+                  className="flex-1 h-2 bg-gradient-to-r from-danger to-white rounded-full appearance-none cursor-pointer"
+                />
+                <span className="text-sm font-medium text-white min-w-[60px]">{config.commission || 0.03}%</span>
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="text-sm font-medium text-muted-foreground mb-2 block">Market Impact</label>
-            <select className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm">
-              <option value="low">Low (Liquid stocks)</option>
-              <option value="medium">Medium (Mid-caps)</option>
-              <option value="high">High (Small-caps)</option>
-            </select>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground mb-2 block">Market Impact</label>
+              <select className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm" defaultValue={config.marketImpact || 'low'}>
+                <option value="low">Low (Liquid stocks)</option>
+                <option value="medium">Medium (Mid-caps)</option>
+                <option value="high">High (Small-caps)</option>
+              </select>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Strategy Equity Curve */}
       <div className="card-glass rounded-xl p-6">
@@ -158,50 +164,50 @@ export default function BacktestingPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div>
             <p className="text-sm text-muted-foreground mb-1">Total Return</p>
-            <h3 className="text-2xl font-bold text-blue-500">29.8%</h3>
-            <p className="text-xs text-muted-foreground">+15% vs Nifty</p>
+            <h3 className="text-2xl font-bold text-blue-500">{formatPercentage(performanceMetrics.totalReturn || 0)}</h3>
+            <p className="text-xs text-muted-foreground">{performanceMetrics.vsBenchmark || 'vs Nifty'}</p>
           </div>
 
           <div>
             <p className="text-sm text-muted-foreground mb-1">CAGR</p>
-            <h3 className="text-2xl font-bold text-blue-500">24.6%</h3>
+            <h3 className="text-2xl font-bold text-blue-500">{formatPercentage(performanceMetrics.cagr || 0)}</h3>
             <p className="text-xs text-muted-foreground">Annualized</p>
           </div>
 
           <div>
             <p className="text-sm text-muted-foreground mb-1">Sharpe Ratio</p>
-            <h3 className="text-2xl font-bold text-blue-500">1.84</h3>
-            <p className="text-xs text-muted-foreground">Excellent</p>
+            <h3 className="text-2xl font-bold text-blue-500">{performanceMetrics.sharpeRatio?.toFixed(2) || 0}</h3>
+            <p className="text-xs text-muted-foreground">{performanceMetrics.sharpeRating || 'Good'}</p>
           </div>
 
           <div>
             <p className="text-sm text-muted-foreground mb-1">Sortino Ratio</p>
-            <h3 className="text-2xl font-bold text-blue-500">2.31</h3>
-            <p className="text-xs text-muted-foreground">Strong</p>
+            <h3 className="text-2xl font-bold text-blue-500">{performanceMetrics.sortinoRatio?.toFixed(2) || 0}</h3>
+            <p className="text-xs text-muted-foreground">{performanceMetrics.sortinoRating || 'Strong'}</p>
           </div>
 
           <div>
             <p className="text-sm text-muted-foreground mb-1">Max Drawdown</p>
-            <h3 className="text-2xl font-bold text-warning">-8.2%</h3>
-            <p className="text-xs text-muted-foreground">Within tolerance</p>
+            <h3 className="text-2xl font-bold text-warning">{formatPercentage(performanceMetrics.maxDrawdown || 0)}</h3>
+            <p className="text-xs text-muted-foreground">{performanceMetrics.drawdownNote || 'Within tolerance'}</p>
           </div>
 
           <div>
             <p className="text-sm text-muted-foreground mb-1">Win Rate</p>
-            <h3 className="text-2xl font-bold text-success">64.2%</h3>
-            <p className="text-xs text-muted-foreground">568/885 trades</p>
+            <h3 className="text-2xl font-bold text-success">{formatPercentage(performanceMetrics.winRate || 0)}</h3>
+            <p className="text-xs text-muted-foreground">{performanceMetrics.winLossRatio || 'trades'}</p>
           </div>
 
           <div>
             <p className="text-sm text-muted-foreground mb-1">Profit Factor</p>
-            <h3 className="text-2xl font-bold text-purple-500">2.14</h3>
-            <p className="text-xs text-muted-foreground">Profitable</p>
+            <h3 className="text-2xl font-bold text-purple-500">{performanceMetrics.profitFactor?.toFixed(2) || 0}</h3>
+            <p className="text-xs text-muted-foreground">{performanceMetrics.profitRating || 'Profitable'}</p>
           </div>
 
           <div>
             <p className="text-sm text-muted-foreground mb-1">Avg Win / Avg Loss</p>
-            <h3 className="text-2xl font-bold text-white">1.48</h3>
-            <p className="text-xs text-muted-foreground">Favorable</p>
+            <h3 className="text-2xl font-bold text-white">{performanceMetrics.avgWinLoss?.toFixed(2) || 0}</h3>
+            <p className="text-xs text-muted-foreground">{performanceMetrics.winLossNote || 'Favorable'}</p>
           </div>
         </div>
       </div>

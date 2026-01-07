@@ -1,57 +1,61 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
 import { AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-
-// Mock data
-const riskMetrics = [
-  { label: 'VaR (95%)', value: '₹42,340', percent: '3.43% of portfolio', alert: true },
-  { label: 'CVaR (95%)', value: '₹57,120', percent: 'Expected tail loss', alert: false },
-  { label: 'Max Drawdown', value: '-8.2%', percent: 'Peak to trough', alert: false },
-  { label: 'Portfolio Beta', value: '1.18', percent: 'vs Nifty 50', alert: false },
-]
-
-const varHistoryData = [
-  { date: 'Jan 1', var95: 35000, var99: 45000 },
-  { date: 'Jan 2', var95: 38000, var99: 48000 },
-  { date: 'Jan 3', var95: 40000, var99: 52000 },
-  { date: 'Jan 4', var95: 42000, var99: 54000 },
-  { date: 'Jan 5', var95: 42340, var99: 55000 },
-]
-
-const drawdownData = [
-  { date: 'Dec 1', drawdown: 0 },
-  { date: 'Dec 8', drawdown: -2.5 },
-  { date: 'Dec 15', drawdown: -5.2 },
-  { date: 'Dec 22', drawdown: -8.2 },
-  { date: 'Dec 29', drawdown: -6.8 },
-  { date: 'Jan 5', drawdown: -3.5 },
-]
-
-const stressTests = [
-  { name: 'RBI Rate Hike (+50 bps)', probability: 'Medium', impact: -6.2 },
-  { name: 'Crude Oil Spike (+20%)', probability: 'Low', impact: -4.8 },
-  { name: 'INR Depreciation (10%)', probability: 'Medium', impact: -3.5 },
-  { name: 'Global Market Crash (-15%)', probability: 'Low', impact: -18.4 },
-  { name: 'Sector Rotation (IT to Banking)', probability: 'High', impact: -2.3 },
-]
-
-const positions = [
-  { symbol: 'RELIANCE', exposure: 431475, var: 12450, margin: 86295, status: 'safe' },
-  { symbol: 'INFY', exposure: 295780, var: 8920, margin: 59156, status: 'safe' },
-  { symbol: 'NIFTY FUT', exposure: 548750, var: 24340, margin: 109750, status: 'warning' },
-  { symbol: 'HDFCBANK FUT', exposure: 203525, var: 7820, margin: 40705, status: 'safe' },
-]
-
-const circuitBreakers = [
-  { name: 'Daily Loss Limit', threshold: '₹50,000', current: '₹0', status: 'safe' },
-  { name: 'Position Size Limit', threshold: '20%', current: '18.2%', status: 'safe' },
-  { name: 'Margin Usage Alert', threshold: '80%', current: '68.2%', status: 'safe' },
-  { name: 'Drawdown Limit', threshold: '-15%', current: '-8.2%', status: 'warning' },
-]
+import api from '@/lib/api'
+import Loading from '@/components/ui/Loading'
+import ErrorDisplay from '@/components/ui/ErrorDisplay'
 
 export default function RiskManagementPage() {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+  const [riskMetrics, setRiskMetrics] = useState<any>(null)
+  const [varHistoryData, setVarHistoryData] = useState<any[]>([])
+  const [drawdownData, setDrawdownData] = useState<any[]>([])
+  const [stressTests, setStressTests] = useState<any[]>([])
+  const [positions, setPositions] = useState<any[]>([])
+  const [circuitBreakers, setCircuitBreakers] = useState<any[]>([])
+  const [kellyCriterion, setKellyCriterion] = useState<any>(null)
+
+  useEffect(() => {
+    fetchRiskData()
+  }, [])
+
+  const fetchRiskData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Fetch all risk data in parallel
+      const [metrics, varHistory, drawdown, stress, positionRisk, breakers, kelly] = await Promise.all([
+        api.risk.getMetrics(),
+        api.risk.getVaRHistory(30),
+        api.risk.getDrawdownAnalysis(180),
+        api.risk.getStressTests(),
+        api.risk.getPositionRisk(),
+        api.risk.getCircuitBreakers(),
+        api.risk.getKellyCriterion(),
+      ])
+
+      setRiskMetrics(metrics)
+      setVarHistoryData(varHistory)
+      setDrawdownData(drawdown)
+      setStressTests(stress)
+      setPositions(positionRisk)
+      setCircuitBreakers(breakers)
+      setKellyCriterion(kelly)
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch risk data'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) return <Loading message="Loading risk management data..." />
+  if (error) return <ErrorDisplay error={error} onRetry={fetchRiskData} />
+  if (!riskMetrics) return null
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -61,13 +65,13 @@ export default function RiskManagementPage() {
           <p className="text-sm text-muted-foreground">Portfolio risk analytics and stress testing</p>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 bg-warning/20 border border-warning/30 rounded-lg">
-          <span className="text-sm font-medium text-warning">Risk Score: Medium</span>
+          <span className="text-sm font-medium text-warning">Risk Score: {riskMetrics.riskScore || 'Medium'}</span>
         </div>
       </div>
 
       {/* Risk Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {riskMetrics.map((metric, index) => (
+        {riskMetrics.metrics && riskMetrics.metrics.map((metric: any, index: number) => (
           <div key={index} className="card-glass rounded-xl p-5">
             <div className="flex items-start justify-between mb-3">
               <p className="text-sm font-medium text-muted-foreground">{metric.label}</p>
@@ -228,19 +232,23 @@ export default function RiskManagementPage() {
           </div>
 
           {/* Kelly Criterion */}
-          <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-blue-500/20 rounded-lg">
-                <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-white mb-1">Kelly Criterion Position Sizing</h3>
-                <p className="text-xs text-muted-foreground">Suggested position size: 12.4% per trade based on win rate (64.2%) and risk-reward (1:1.5)</p>
+          {kellyCriterion && (
+            <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-blue-500/20 rounded-lg">
+                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-white mb-1">Kelly Criterion Position Sizing</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {kellyCriterion.description || `Suggested position size: ${kellyCriterion.suggestedSize || 'N/A'} per trade based on win rate (${kellyCriterion.winRate || 'N/A'}) and risk-reward (${kellyCriterion.riskReward || 'N/A'})`}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

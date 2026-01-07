@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   TrendingUp, TrendingDown, PieChart, Activity,
   Shield, ArrowUpRight, ArrowDownRight, AlertCircle,
@@ -13,158 +13,67 @@ import {
 } from 'recharts'
 import MetricCard from '@/components/ui/MetricCard'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
+import api from '@/lib/api'
+import Loading from '@/components/ui/Loading'
+import ErrorDisplay from '@/components/ui/ErrorDisplay'
 
 export default function PortfolioAnalyticsPage() {
-  // Holdings data with tax implications
-  const holdings = [
-    {
-      symbol: 'RELIANCE',
-      name: 'Reliance Industries Ltd',
-      quantity: 250,
-      avgPrice: 2450.00,
-      ltp: 2678.50,
-      currentValue: 669625,
-      totalCost: 612500,
-      pnl: 57125,
-      pnlPercent: 9.33,
-      holdingDays: 425,
-      taxType: 'LTCG',
-      taxRate: 10,
-      taxLiability: 5712.50,
-    },
-    {
-      symbol: 'TCS',
-      name: 'Tata Consultancy Services',
-      quantity: 150,
-      avgPrice: 3520.00,
-      ltp: 3789.25,
-      currentValue: 568387.50,
-      totalCost: 528000,
-      pnl: 40387.50,
-      pnlPercent: 7.65,
-      holdingDays: 520,
-      taxType: 'LTCG',
-      taxRate: 10,
-      taxLiability: 4038.75,
-    },
-    {
-      symbol: 'HDFCBANK',
-      name: 'HDFC Bank Ltd',
-      quantity: 400,
-      avgPrice: 1580.00,
-      ltp: 1642.80,
-      currentValue: 657120,
-      totalCost: 632000,
-      pnl: 25120,
-      pnlPercent: 3.97,
-      holdingDays: 180,
-      taxType: 'STCG',
-      taxRate: 15,
-      taxLiability: 3768.00,
-    },
-    {
-      symbol: 'INFY',
-      name: 'Infosys Ltd',
-      quantity: 300,
-      avgPrice: 1450.00,
-      ltp: 1398.50,
-      currentValue: 419550,
-      totalCost: 435000,
-      pnl: -15450,
-      pnlPercent: -3.55,
-      holdingDays: 95,
-      taxType: 'STCG',
-      taxRate: 15,
-      taxLiability: 0,
-    },
-    {
-      symbol: 'ICICIBANK',
-      name: 'ICICI Bank Ltd',
-      quantity: 500,
-      avgPrice: 960.00,
-      ltp: 1025.75,
-      currentValue: 512875,
-      totalCost: 480000,
-      pnl: 32875,
-      pnlPercent: 6.85,
-      holdingDays: 240,
-      taxType: 'STCG',
-      taxRate: 15,
-      taxLiability: 4931.25,
-    },
-    {
-      symbol: 'BHARTIARTL',
-      name: 'Bharti Airtel Ltd',
-      quantity: 600,
-      avgPrice: 880.00,
-      ltp: 1142.30,
-      currentValue: 685380,
-      totalCost: 528000,
-      pnl: 157380,
-      pnlPercent: 29.81,
-      holdingDays: 680,
-      taxType: 'LTCG',
-      taxRate: 10,
-      taxLiability: 15738.00,
-    },
-  ]
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+  const [holdings, setHoldings] = useState<any[]>([])
+  const [taxSummary, setTaxSummary] = useState<any>(null)
+  const [monthlyReturns, setMonthlyReturns] = useState<any[]>([])
+  const [riskMetrics, setRiskMetrics] = useState<any>(null)
+  const [correlationData, setCorrelationData] = useState<any[]>([])
+  const [drawdownData, setDrawdownData] = useState<any[]>([])
 
-  const totalCurrentValue = holdings.reduce((sum, h) => sum + h.currentValue, 0)
-  const totalCost = holdings.reduce((sum, h) => sum + h.totalCost, 0)
-  const totalPnL = totalCurrentValue - totalCost
-  const totalPnLPercent = (totalPnL / totalCost) * 100
-  const totalTaxLiability = holdings.reduce((sum, h) => sum + h.taxLiability, 0)
+  useEffect(() => {
+    fetchPortfolioData()
+  }, [])
 
-  const ltcgHoldings = holdings.filter(h => h.taxType === 'LTCG')
-  const stcgHoldings = holdings.filter(h => h.taxType === 'STCG')
-  const ltcgValue = ltcgHoldings.reduce((sum, h) => sum + h.currentValue, 0)
-  const stcgValue = stcgHoldings.reduce((sum, h) => sum + h.currentValue, 0)
+  const fetchPortfolioData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
 
-  // Monthly returns data
-  const monthlyReturns = [
-    { month: 'Jul', portfolio: 2.4, nifty: 1.8 },
-    { month: 'Aug', portfolio: -1.2, nifty: -0.8 },
-    { month: 'Sep', portfolio: 3.8, nifty: 2.5 },
-    { month: 'Oct', portfolio: -2.5, nifty: -1.9 },
-    { month: 'Nov', portfolio: 4.2, nifty: 3.1 },
-    { month: 'Dec', portfolio: 5.6, nifty: 4.2 },
-    { month: 'Jan', portfolio: 1.8, nifty: 2.1 },
-  ]
+      // Fetch all portfolio data in parallel
+      const [holdingsData, taxData, returnsData, metricsData, correlationRes, drawdownRes] = await Promise.all([
+        api.portfolio.getHoldings(),
+        api.portfolio.getTaxSummary(),
+        api.portfolio.getMonthlyReturns(6),
+        api.portfolio.getRiskMetrics(),
+        api.portfolio.getCorrelation(),
+        api.portfolio.getDrawdownHistory(180),
+      ])
 
-  // Correlation data
-  const correlationData = [
-    { name: 'RELIANCE', nifty: 0.85, sector: 0.92, value: 669625 },
-    { name: 'TCS', nifty: 0.78, sector: 0.88, value: 568387 },
-    { name: 'HDFCBANK', nifty: 0.82, sector: 0.94, value: 657120 },
-    { name: 'INFY', nifty: 0.76, sector: 0.89, value: 419550 },
-    { name: 'ICICIBANK', nifty: 0.81, sector: 0.93, value: 512875 },
-    { name: 'BHARTIARTL', nifty: 0.72, sector: 0.79, value: 685380 },
-  ]
-
-  // Risk-adjusted metrics
-  const riskMetrics = {
-    sharpeRatio: 1.84,
-    sortinoRatio: 2.31,
-    calmarRatio: 1.52,
-    informationRatio: 0.68,
-    treynorRatio: 12.4,
-    maxDrawdown: -8.2,
-    volatility: 14.8,
-    beta: 0.92,
-    alpha: 2.4,
-    rSquared: 0.78,
+      setHoldings(holdingsData)
+      setTaxSummary(taxData)
+      setMonthlyReturns(returnsData)
+      setRiskMetrics(metricsData)
+      setCorrelationData(correlationRes)
+      setDrawdownData(drawdownRes)
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch portfolio data'))
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Drawdown history
-  const drawdownData = [
-    { date: 'Jul', drawdown: 0 },
-    { date: 'Aug', drawdown: -2.1 },
-    { date: 'Sep', drawdown: -1.2 },
-    { date: 'Oct', drawdown: -4.8 },
-    { date: 'Nov', drawdown: -2.3 },
-    { date: 'Dec', drawdown: -1.1 },
-    { date: 'Jan', drawdown: -0.5 },
-  ]
+  if (loading) return <Loading message="Loading portfolio analytics..." />
+  if (error) return <ErrorDisplay error={error} onRetry={fetchPortfolioData} />
+  if (!holdings || holdings.length === 0 || !riskMetrics) return null
+
+  // Calculate portfolio metrics from holdings
+  const totalCurrentValue = holdings.reduce((sum: number, h: any) => sum + h.currentValue, 0)
+  const totalCost = holdings.reduce((sum: number, h: any) => sum + h.totalCost, 0)
+  const totalPnL = totalCurrentValue - totalCost
+  const totalPnLPercent = (totalPnL / totalCost) * 100
+  const totalTaxLiability = holdings.reduce((sum: number, h: any) => sum + h.taxLiability, 0)
+
+  const ltcgHoldings = holdings.filter((h: any) => h.taxType === 'LTCG')
+  const stcgHoldings = holdings.filter((h: any) => h.taxType === 'STCG')
+  const ltcgValue = ltcgHoldings.reduce((sum: number, h: any) => sum + h.currentValue, 0)
+  const stcgValue = stcgHoldings.reduce((sum: number, h: any) => sum + h.currentValue, 0)
 
   return (
     <div className="space-y-6">
@@ -205,13 +114,13 @@ export default function PortfolioAnalyticsPage() {
           title="Tax Liability (Est.)"
           value={formatCurrency(totalTaxLiability)}
           icon={<Shield className="w-5 h-5" />}
-          subtitle={`LTCG: ${formatCurrency(ltcgHoldings.reduce((sum, h) => sum + h.taxLiability, 0))}`}
+          subtitle={`LTCG: ${formatCurrency(ltcgHoldings.reduce((sum: number, h: any) => sum + h.taxLiability, 0))}`}
         />
         <MetricCard
           title="Sharpe Ratio"
-          value={riskMetrics.sharpeRatio.toFixed(2)}
+          value={riskMetrics.sharpeRatio?.toFixed(2) || '0.00'}
           icon={<Target className="w-5 h-5" />}
-          subtitle={`Sortino: ${riskMetrics.sortinoRatio.toFixed(2)}`}
+          subtitle={`Sortino: ${riskMetrics.sortinoRatio?.toFixed(2) || '0.00'}`}
         />
       </div>
 
@@ -238,7 +147,7 @@ export default function PortfolioAnalyticsPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Tax Liability:</span>
-                <span className="text-sm font-bold text-success">{formatCurrency(ltcgHoldings.reduce((sum, h) => sum + h.taxLiability, 0))}</span>
+                <span className="text-sm font-bold text-success">{formatCurrency(ltcgHoldings.reduce((sum: number, h: any) => sum + h.taxLiability, 0))}</span>
               </div>
               <div className="text-xs text-muted-foreground mt-2">
                 Held for &gt;12 months
@@ -249,7 +158,7 @@ export default function PortfolioAnalyticsPage() {
           <div className="p-4 bg-dark-700/30 rounded-lg">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-muted-foreground">Short Term Capital Gains (STCG)</h3>
-              <span className="text-xs px-2 py-1 bg-warning/10 text-warning rounded">15% Tax</span>
+              <span className="text-xs px-2 py-1 bg-yellow-500/10 text-warning rounded">15% Tax</span>
             </div>
             <div className="space-y-2">
               <div className="flex justify-between">
@@ -262,7 +171,7 @@ export default function PortfolioAnalyticsPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Tax Liability:</span>
-                <span className="text-sm font-bold text-warning">{formatCurrency(stcgHoldings.reduce((sum, h) => sum + h.taxLiability, 0))}</span>
+                <span className="text-sm font-bold text-warning">{formatCurrency(stcgHoldings.reduce((sum: number, h: any) => sum + h.taxLiability, 0))}</span>
               </div>
               <div className="text-xs text-muted-foreground mt-2">
                 Held for &lt;12 months
@@ -275,8 +184,8 @@ export default function PortfolioAnalyticsPage() {
       {/* Holdings Table */}
       <div className="card-glass rounded-xl p-6">
         <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <BarChart3 className="w-5 h-5 text-purple-500" />
-          Holdings Details
+          <Activity className="w-5 h-5 text-blue-500" />
+          Current Holdings
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -288,245 +197,153 @@ export default function PortfolioAnalyticsPage() {
                 <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">LTP</th>
                 <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Current Value</th>
                 <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">P&L</th>
-                <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Holding</th>
-                <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Tax Type</th>
+                <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Tax</th>
                 <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Tax Liability</th>
               </tr>
             </thead>
             <tbody>
-              {holdings.map((holding, index) => (
+              {holdings.map((holding: any, index: number) => (
                 <tr key={index} className="border-b border-dark-700/50 hover:bg-dark-700/30 transition-colors">
                   <td className="py-3 px-4">
-                    <div>
-                      <div className="text-sm font-medium text-white">{holding.symbol}</div>
-                      <div className="text-xs text-muted-foreground">{holding.name}</div>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-white">{holding.symbol}</span>
+                      <span className="text-xs text-muted-foreground">{holding.name}</span>
                     </div>
                   </td>
-                  <td className="text-right py-3 px-4 text-sm text-white">{holding.quantity}</td>
-                  <td className="text-right py-3 px-4 text-sm text-white">{formatCurrency(holding.avgPrice)}</td>
-                  <td className="text-right py-3 px-4 text-sm text-white">{formatCurrency(holding.ltp)}</td>
-                  <td className="text-right py-3 px-4 text-sm font-medium text-white">{formatCurrency(holding.currentValue)}</td>
-                  <td className="text-right py-3 px-4">
-                    <div className={`text-sm font-bold ${holding.pnl >= 0 ? 'text-success' : 'text-danger'}`}>
-                      {formatCurrency(holding.pnl)}
-                    </div>
-                    <div className={`text-xs ${holding.pnl >= 0 ? 'text-success' : 'text-danger'}`}>
-                      {formatPercentage(holding.pnlPercent)}
+                  <td className="py-3 px-4 text-right text-sm text-white">{holding.quantity}</td>
+                  <td className="py-3 px-4 text-right text-sm text-white">{formatCurrency(holding.avgPrice)}</td>
+                  <td className="py-3 px-4 text-right text-sm text-white">{formatCurrency(holding.ltp)}</td>
+                  <td className="py-3 px-4 text-right text-sm font-medium text-white">{formatCurrency(holding.currentValue)}</td>
+                  <td className="py-3 px-4 text-right">
+                    <div className="flex flex-col items-end">
+                      <span className={`text-sm font-medium ${holding.pnl >= 0 ? 'text-success' : 'text-danger'}`}>
+                        {formatCurrency(holding.pnl)}
+                      </span>
+                      <span className={`text-xs ${holding.pnl >= 0 ? 'text-success' : 'text-danger'}`}>
+                        {formatPercentage(holding.pnlPercent)}
+                      </span>
                     </div>
                   </td>
-                  <td className="text-center py-3 px-4">
-                    <span className="text-xs text-muted-foreground">{holding.holdingDays} days</span>
-                  </td>
-                  <td className="text-center py-3 px-4">
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      holding.taxType === 'LTCG'
-                        ? 'bg-green-500/10 text-success'
-                        : 'bg-warning/10 text-warning'
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      holding.taxType === 'LTCG' ? 'bg-success/20 text-success' : 'bg-warning/20 text-warning'
                     }`}>
-                      {holding.taxType} ({holding.taxRate}%)
+                      {holding.taxType}
                     </span>
                   </td>
-                  <td className="text-right py-3 px-4">
-                    <span className="text-sm font-medium text-white">
-                      {holding.taxLiability > 0 ? formatCurrency(holding.taxLiability) : '-'}
-                    </span>
-                  </td>
+                  <td className="py-3 px-4 text-right text-sm font-medium text-warning">{formatCurrency(holding.taxLiability)}</td>
                 </tr>
               ))}
             </tbody>
-            <tfoot className="border-t border-dark-600">
-              <tr>
-                <td colSpan={4} className="py-3 px-4 text-sm font-bold text-white">TOTAL</td>
-                <td className="text-right py-3 px-4 text-sm font-bold text-white">{formatCurrency(totalCurrentValue)}</td>
-                <td className="text-right py-3 px-4">
-                  <div className={`text-sm font-bold ${totalPnL >= 0 ? 'text-success' : 'text-danger'}`}>
-                    {formatCurrency(totalPnL)}
-                  </div>
-                  <div className={`text-xs ${totalPnL >= 0 ? 'text-success' : 'text-danger'}`}>
-                    {formatPercentage(totalPnLPercent)}
-                  </div>
-                </td>
-                <td colSpan={2}></td>
-                <td className="text-right py-3 px-4 text-sm font-bold text-white">{formatCurrency(totalTaxLiability)}</td>
-              </tr>
-            </tfoot>
           </table>
         </div>
       </div>
 
-      {/* Monthly Returns & Risk Metrics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Monthly Returns Chart */}
+      {/* Monthly Returns */}
+      {monthlyReturns && monthlyReturns.length > 0 && (
         <div className="card-glass rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-purple-500" />
-            Monthly Returns
-          </h2>
+          <h2 className="text-xl font-bold text-white mb-6">Monthly Returns vs Nifty 50</h2>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={monthlyReturns}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2740" />
-              <XAxis dataKey="month" stroke="#888" />
-              <YAxis stroke="#888" />
+              <XAxis dataKey="month" stroke="#6b7280" fontSize={12} />
+              <YAxis stroke="#6b7280" fontSize={12} />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: '#0f1429',
-                  border: '1px solid #1f2740',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#fff' }}
+                contentStyle={{ backgroundColor: '#1a2038', border: '1px solid #1f2740', borderRadius: '8px' }}
+                labelStyle={{ color: '#9ca3af' }}
               />
               <Legend />
-              <Bar dataKey="portfolio" name="Portfolio" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="nifty" name="Nifty 50" fill="#10b981" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="portfolio" fill="#8b5cf6" name="Portfolio" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="nifty" fill="#3b82f6" name="Nifty 50" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
+      )}
 
-        {/* Risk-Adjusted Metrics */}
-        <div className="card-glass rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Target className="w-5 h-5 text-purple-500" />
-            Risk-Adjusted Metrics
-          </h2>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 bg-dark-700/30 rounded-lg">
-                <div className="text-xs text-muted-foreground mb-1">Sharpe Ratio</div>
-                <div className="text-2xl font-bold text-white">{riskMetrics.sharpeRatio.toFixed(2)}</div>
-                <div className="text-xs text-success mt-1">Excellent</div>
+      {/* Risk Metrics */}
+      <div className="card-glass rounded-xl p-6">
+        <h2 className="text-xl font-bold text-white mb-6">Risk-Adjusted Performance Metrics</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+          {riskMetrics && Object.keys(riskMetrics).map((key: string) => {
+            const metricNames: Record<string, string> = {
+              sharpeRatio: 'Sharpe Ratio',
+              sortinoRatio: 'Sortino Ratio',
+              calmarRatio: 'Calmar Ratio',
+              informationRatio: 'Information Ratio',
+              treynorRatio: 'Treynor Ratio',
+              maxDrawdown: 'Max Drawdown',
+              volatility: 'Volatility',
+              beta: 'Beta',
+              alpha: 'Alpha',
+              rSquared: 'R-Squared'
+            }
+            const value = riskMetrics[key]
+            const isPercentage = key === 'maxDrawdown' || key === 'volatility' || key === 'alpha'
+            const displayValue = isPercentage ? formatPercentage(value) : typeof value === 'number' ? value.toFixed(2) : value
+
+            return (
+              <div key={key} className="p-4 bg-dark-700/30 rounded-lg">
+                <p className="text-xs text-muted-foreground mb-1">{metricNames[key] || key}</p>
+                <h3 className={`text-xl font-bold ${
+                  key === 'maxDrawdown' ? 'text-danger' :
+                  key === 'sharpeRatio' || key === 'sortinoRatio' ? 'text-success' : 'text-white'
+                }`}>
+                  {displayValue}
+                </h3>
               </div>
-              <div className="p-3 bg-dark-700/30 rounded-lg">
-                <div className="text-xs text-muted-foreground mb-1">Sortino Ratio</div>
-                <div className="text-2xl font-bold text-white">{riskMetrics.sortinoRatio.toFixed(2)}</div>
-                <div className="text-xs text-success mt-1">Strong</div>
-              </div>
-              <div className="p-3 bg-dark-700/30 rounded-lg">
-                <div className="text-xs text-muted-foreground mb-1">Calmar Ratio</div>
-                <div className="text-2xl font-bold text-white">{riskMetrics.calmarRatio.toFixed(2)}</div>
-                <div className="text-xs text-warning mt-1">Good</div>
-              </div>
-              <div className="p-3 bg-dark-700/30 rounded-lg">
-                <div className="text-xs text-muted-foreground mb-1">Information Ratio</div>
-                <div className="text-2xl font-bold text-white">{riskMetrics.informationRatio.toFixed(2)}</div>
-                <div className="text-xs text-muted-foreground mt-1">vs Nifty 50</div>
-              </div>
-            </div>
-            <div className="pt-4 border-t border-dark-600 space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Volatility (Annual)</span>
-                <span className="text-sm font-medium text-white">{riskMetrics.volatility.toFixed(1)}%</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Portfolio Beta</span>
-                <span className="text-sm font-medium text-white">{riskMetrics.beta.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Alpha (Annual)</span>
-                <span className="text-sm font-medium text-success">{formatPercentage(riskMetrics.alpha)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">R-Squared</span>
-                <span className="text-sm font-medium text-white">{riskMetrics.rSquared.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
+            )
+          })}
         </div>
       </div>
 
       {/* Correlation Analysis */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Correlation Scatter Plot */}
+      {correlationData && correlationData.length > 0 && (
         <div className="card-glass rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-purple-500" />
-            Correlation with Nifty 50
-          </h2>
+          <h2 className="text-xl font-bold text-white mb-6">Correlation Analysis</h2>
           <ResponsiveContainer width="100%" height={300}>
             <ScatterChart>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2740" />
-              <XAxis
-                type="number"
-                dataKey="nifty"
-                name="Nifty Correlation"
-                stroke="#888"
-                domain={[0.6, 0.95]}
-                label={{ value: 'Nifty Correlation', position: 'insideBottom', offset: -5, fill: '#888' }}
-              />
-              <YAxis
-                type="number"
-                dataKey="sector"
-                name="Sector Correlation"
-                stroke="#888"
-                domain={[0.7, 1.0]}
-                label={{ value: 'Sector Correlation', angle: -90, position: 'insideLeft', fill: '#888' }}
-              />
+              <XAxis type="number" dataKey="nifty" name="Nifty Correlation" stroke="#6b7280" fontSize={12} domain={[0, 1]} />
+              <YAxis type="number" dataKey="sector" name="Sector Correlation" stroke="#6b7280" fontSize={12} domain={[0, 1]} />
               <Tooltip
+                contentStyle={{ backgroundColor: '#1a2038', border: '1px solid #1f2740', borderRadius: '8px' }}
+                labelStyle={{ color: '#9ca3af' }}
                 cursor={{ strokeDasharray: '3 3' }}
-                contentStyle={{
-                  backgroundColor: '#0f1429',
-                  border: '1px solid #1f2740',
-                  borderRadius: '8px',
-                }}
-                formatter={(value: any) => value.toFixed(2)}
               />
-              <Scatter name="Holdings" data={correlationData} fill="#8b5cf6">
-                {correlationData.map((entry, index) => (
+              <Scatter data={correlationData} fill="#8b5cf6">
+                {correlationData.map((entry: any, index: number) => (
                   <Cell key={`cell-${index}`} fill="#8b5cf6" />
                 ))}
               </Scatter>
             </ScatterChart>
           </ResponsiveContainer>
-          <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-            <AlertCircle className="w-4 h-4" />
-            Higher correlation indicates stronger movement with benchmark
-          </div>
         </div>
+      )}
 
-        {/* Drawdown Analysis */}
+      {/* Drawdown History */}
+      {drawdownData && drawdownData.length > 0 && (
         <div className="card-glass rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <TrendingDown className="w-5 h-5 text-danger" />
-            Drawdown Analysis
-          </h2>
-          <ResponsiveContainer width="100%" height={300}>
+          <h2 className="text-xl font-bold text-white mb-6">Portfolio Drawdown History</h2>
+          <ResponsiveContainer width="100%" height={250}>
             <AreaChart data={drawdownData}>
               <defs>
-                <linearGradient id="colorDrawdown" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="colorDrawdownFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
                   <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2740" />
-              <XAxis dataKey="date" stroke="#888" />
-              <YAxis stroke="#888" />
+              <XAxis dataKey="date" stroke="#6b7280" fontSize={12} />
+              <YAxis stroke="#6b7280" fontSize={12} />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: '#0f1429',
-                  border: '1px solid #1f2740',
-                  borderRadius: '8px',
-                }}
+                contentStyle={{ backgroundColor: '#1a2038', border: '1px solid #1f2740', borderRadius: '8px' }}
+                labelStyle={{ color: '#9ca3af' }}
               />
-              <Area
-                type="monotone"
-                dataKey="drawdown"
-                stroke="#ef4444"
-                strokeWidth={2}
-                fill="url(#colorDrawdown)"
-              />
+              <Area type="monotone" dataKey="drawdown" stroke="#ef4444" strokeWidth={2} fill="url(#colorDrawdownFill)" />
             </AreaChart>
           </ResponsiveContainer>
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            <div className="p-3 bg-dark-700/30 rounded-lg">
-              <div className="text-xs text-muted-foreground mb-1">Max Drawdown</div>
-              <div className="text-xl font-bold text-danger">{formatPercentage(riskMetrics.maxDrawdown)}</div>
-            </div>
-            <div className="p-3 bg-dark-700/30 rounded-lg">
-              <div className="text-xs text-muted-foreground mb-1">Current Drawdown</div>
-              <div className="text-xl font-bold text-warning">-0.5%</div>
-            </div>
-          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

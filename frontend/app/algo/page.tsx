@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Play, Pause, Square, TrendingUp, TrendingDown,
   Activity, Zap, Clock, DollarSign, Target,
@@ -14,6 +14,9 @@ import {
 } from 'recharts'
 import MetricCard from '@/components/ui/MetricCard'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
+import api from '@/lib/api'
+import Loading from '@/components/ui/Loading'
+import ErrorDisplay from '@/components/ui/ErrorDisplay'
 
 interface AlgoStrategy {
   id: string
@@ -29,181 +32,63 @@ interface AlgoStrategy {
 }
 
 export default function AlgoTradingPage() {
-  const [strategies, setStrategies] = useState<AlgoStrategy[]>([
-    {
-      id: 'strat-1',
-      name: 'Mean Reversion - Bank Nifty',
-      status: 'active',
-      todayPnl: 18450,
-      todayPnlPercent: 3.24,
-      totalTrades: 12,
-      winRate: 75,
-      sharpe: 2.14,
-      capital: 569250,
-      leverage: 2.5,
-    },
-    {
-      id: 'strat-2',
-      name: 'Momentum Breakout - Nifty IT',
-      status: 'active',
-      todayPnl: -4250,
-      todayPnlPercent: -0.92,
-      totalTrades: 8,
-      winRate: 62.5,
-      sharpe: 1.86,
-      capital: 462000,
-      leverage: 3.0,
-    },
-    {
-      id: 'strat-3',
-      name: 'Volatility Arbitrage - Options',
-      status: 'paused',
-      todayPnl: 12800,
-      todayPnlPercent: 1.78,
-      totalTrades: 24,
-      winRate: 83.3,
-      sharpe: 2.42,
-      capital: 719200,
-      leverage: 1.5,
-    },
-    {
-      id: 'strat-4',
-      name: 'Pair Trading - Banking Sector',
-      status: 'active',
-      todayPnl: 9650,
-      todayPnlPercent: 2.41,
-      totalTrades: 6,
-      winRate: 66.7,
-      sharpe: 1.68,
-      capital: 400150,
-      leverage: 2.0,
-    },
-  ])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+  const [strategies, setStrategies] = useState<AlgoStrategy[]>([])
+  const [intradayPerformance, setIntradayPerformance] = useState<any[]>([])
+  const [technicalIndicators, setTechnicalIndicators] = useState<any[]>([])
+  const [executionTimeline, setExecutionTimeline] = useState<any[]>([])
+  const [microstructure, setMicrostructure] = useState<any>(null)
 
-  // Intraday performance data
-  const intradayPerformance = [
-    { time: '09:15', pnl: 0, cumulative: 0 },
-    { time: '09:30', pnl: 2450, cumulative: 2450 },
-    { time: '10:00', pnl: 1850, cumulative: 4300 },
-    { time: '10:30', pnl: -1200, cumulative: 3100 },
-    { time: '11:00', pnl: 3650, cumulative: 6750 },
-    { time: '11:30', pnl: 2100, cumulative: 8850 },
-    { time: '12:00', pnl: -950, cumulative: 7900 },
-    { time: '12:30', pnl: 4200, cumulative: 12100 },
-    { time: '13:00', pnl: 1850, cumulative: 13950 },
-    { time: '13:30', pnl: 3250, cumulative: 17200 },
-    { time: '14:00', pnl: 2800, cumulative: 20000 },
-    { time: '14:30', pnl: 1650, cumulative: 21650 },
-    { time: '15:00', pnl: 3200, cumulative: 24850 },
-    { time: '15:30', pnl: 1800, cumulative: 26650 },
-  ]
+  useEffect(() => {
+    fetchAlgoData()
+  }, [])
 
-  // Technical indicators
-  const technicalIndicators = [
-    { name: 'RSI (14)', value: 58.4, signal: 'Neutral', threshold: 50, color: 'warning' },
-    { name: 'MACD', value: 12.8, signal: 'Bullish', threshold: 0, color: 'success' },
-    { name: 'ADX (14)', value: 24.6, signal: 'Weak Trend', threshold: 25, color: 'warning' },
-    { name: 'Bollinger %B', value: 0.68, signal: 'Overbought', threshold: 0.8, color: 'danger' },
-    { name: 'Stochastic', value: 72.3, signal: 'Overbought', threshold: 80, color: 'warning' },
-    { name: 'ATR (14)', value: 142.5, signal: 'High Vol', threshold: 100, color: 'danger' },
-  ]
+  const fetchAlgoData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
 
-  // Execution timeline
-  const executionTimeline = [
-    {
-      time: '14:52:18',
-      strategy: 'Mean Reversion - Bank Nifty',
-      action: 'BUY',
-      instrument: 'BANKNIFTY 25JAN24 47600 CE',
-      quantity: 50,
-      price: 245.75,
-      status: 'executed',
-      pnl: 0,
-    },
-    {
-      time: '14:38:45',
-      strategy: 'Pair Trading - Banking Sector',
-      action: 'SELL',
-      instrument: 'HDFCBANK FUT',
-      quantity: 550,
-      price: 1642.80,
-      status: 'executed',
-      pnl: 2850,
-    },
-    {
-      time: '14:15:22',
-      strategy: 'Momentum Breakout - Nifty IT',
-      action: 'BUY',
-      instrument: 'TCS',
-      quantity: 100,
-      price: 3789.25,
-      status: 'executed',
-      pnl: -1200,
-    },
-    {
-      time: '13:47:11',
-      strategy: 'Mean Reversion - Bank Nifty',
-      action: 'SELL',
-      instrument: 'BANKNIFTY 25JAN24 47500 PE',
-      quantity: 75,
-      price: 182.40,
-      status: 'executed',
-      pnl: 5625,
-    },
-    {
-      time: '13:22:56',
-      strategy: 'Volatility Arbitrage - Options',
-      action: 'BUY',
-      instrument: 'NIFTY 25JAN24 21900 CE',
-      quantity: 150,
-      price: 218.50,
-      status: 'partial',
-      pnl: 0,
-    },
-    {
-      time: '12:58:33',
-      strategy: 'Pair Trading - Banking Sector',
-      action: 'BUY',
-      instrument: 'ICICIBANK FUT',
-      quantity: 625,
-      price: 1025.75,
-      status: 'executed',
-      pnl: 3120,
-    },
-  ]
+      // Fetch all algo trading data in parallel
+      const [strategiesData, performance, indicators, timeline, marketMicro] = await Promise.all([
+        api.algo.getStrategies(),
+        api.algo.getIntradayPerformance(),
+        api.algo.getTechnicalIndicators('NIFTY'),
+        api.algo.getExecutionTimeline(10),
+        api.algo.getMarketMicrostructure(),
+      ])
 
-  // Market microstructure
-  const marketMicrostructure = {
-    bidAskSpread: 0.15,
-    marketDepth: 'Good',
-    orderBookImbalance: 0.62,
-    volumeProfile: 'Above Average',
-    tickerTape: [
-      { symbol: 'NIFTY', price: 21894.35, change: 1.24, volume: '124.5Cr' },
-      { symbol: 'BANKNIFTY', price: 47623.90, change: -0.42, volume: '89.2Cr' },
-      { symbol: 'FINNIFTY', price: 20145.75, change: 0.68, volume: '34.8Cr' },
-    ],
+      setStrategies(strategiesData)
+      setIntradayPerformance(performance)
+      setTechnicalIndicators(indicators)
+      setExecutionTimeline(timeline)
+      setMicrostructure(marketMicro)
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch algo trading data'))
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const totalTodayPnl = strategies.reduce((sum, s) => sum + s.todayPnl, 0)
-  const totalCapital = strategies.reduce((sum, s) => sum + s.capital, 0)
-  const totalTodayPnlPercent = (totalTodayPnl / totalCapital) * 100
-  const activeStrategies = strategies.filter(s => s.status === 'active').length
-  const totalTrades = strategies.reduce((sum, s) => sum + s.totalTrades, 0)
-
-  const toggleStrategyStatus = (id: string) => {
-    setStrategies(
-      strategies.map(s => {
-        if (s.id === id) {
-          return {
-            ...s,
-            status: s.status === 'active' ? 'paused' : 'active',
-          }
-        }
-        return s
-      })
-    )
+  const handleToggleStrategy = async (strategyId: string) => {
+    try {
+      await api.algo.toggleStrategy(strategyId)
+      await fetchAlgoData() // Refresh data
+    } catch (err) {
+      console.error('Failed to toggle strategy:', err)
+    }
   }
+
+  if (loading) return <Loading message="Loading algo trading data..." />
+  if (error) return <ErrorDisplay error={error} onRetry={fetchAlgoData} />
+  if (!strategies || strategies.length === 0) return null
+
+  // Calculate totals from strategies
+  const totalTodayPnl = strategies.reduce((sum: number, s: AlgoStrategy) => sum + s.todayPnl, 0)
+  const totalCapital = strategies.reduce((sum: number, s: AlgoStrategy) => sum + s.capital, 0)
+  const totalTrades = strategies.reduce((sum: number, s: AlgoStrategy) => sum + s.totalTrades, 0)
+  const activeStrategies = strategies.filter((s: AlgoStrategy) => s.status === 'active').length
+  const totalTodayPnlPercent = totalCapital > 0 ? (totalTodayPnl / totalCapital) * 100 : 0
 
   return (
     <div className="space-y-6">
