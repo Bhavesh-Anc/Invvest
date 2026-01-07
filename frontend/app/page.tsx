@@ -1,38 +1,32 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback } from 'react'
 import MetricCard from '@/components/ui/MetricCard'
 import Loading from '@/components/ui/Loading'
 import ErrorDisplay from '@/components/ui/ErrorDisplay'
 import { TrendingUp, DollarSign, TrendingDown, Target, Activity, Shield } from 'lucide-react'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
 import { AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import api from '@/lib/api'
+import { useDashboardData, useMarketData } from '@/lib/hooks/useQueries'
+import { useWebSocket } from '@/lib/websocket'
 
 export default function DashboardPage() {
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
-  const [dashboardData, setDashboardData] = useState<any>(null)
+  // Use React Query for automatic caching, background refetching, and better state management
+  const { data: dashboardData, isLoading, isError, error, refetch } = useDashboardData()
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
+  // Separate query for market data with faster refresh (every 5s)
+  const { data: marketDataLive } = useMarketData()
 
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const data = await api.dashboard.getDashboardData()
-      setDashboardData(data)
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch dashboard data'))
-    } finally {
-      setLoading(false)
-    }
-  }
+  // WebSocket for real-time portfolio value updates
+  const handlePortfolioUpdate = useCallback((data: any) => {
+    // Portfolio changed - refetch dashboard data
+    refetch()
+  }, [refetch])
 
-  if (loading) return <Loading message="Loading dashboard data..." />
-  if (error) return <ErrorDisplay error={error} onRetry={fetchDashboardData} />
+  const { isConnected } = useWebSocket('portfolio', handlePortfolioUpdate)
+
+  if (isLoading) return <Loading message="Loading dashboard data..." />
+  if (isError) return <ErrorDisplay error={error as Error} onRetry={() => refetch()} />
   if (!dashboardData) return null
 
   const { portfolio, marketData, chartData, sectorAllocation, riskMetrics, positions, marketRegime } = dashboardData
@@ -43,6 +37,13 @@ export default function DashboardPage() {
       <div className="card-glass rounded-xl p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-6">
+            {/* WebSocket Connection Status */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-dark-700/50 rounded-lg">
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`}></div>
+              <span className="text-xs font-medium text-muted-foreground">
+                {isConnected ? 'Live' : 'Offline'}
+              </span>
+            </div>
             <div>
               <span className="text-xs text-muted-foreground">NIFTY 50</span>
               <div className="flex items-center gap-2">
