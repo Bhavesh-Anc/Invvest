@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import MetricCard from '@/components/ui/MetricCard'
 import Loading from '@/components/ui/Loading'
 import ErrorDisplay from '@/components/ui/ErrorDisplay'
-import { TrendingUp, DollarSign, TrendingDown, Target, Activity, Shield } from 'lucide-react'
+import TradingViewChart from '@/components/charts/TradingViewChart'
+import { TrendingUp, DollarSign, TrendingDown, Target, Activity, Shield, BarChart3 } from 'lucide-react'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
 import { AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { useDashboardData, useMarketData } from '@/lib/hooks/useQueries'
@@ -16,6 +17,10 @@ export default function DashboardPage() {
 
   // Separate query for market data with faster refresh (every 5s)
   const { data: marketDataLive } = useMarketData()
+
+  // Chart symbol selection
+  const [selectedSymbol, setSelectedSymbol] = useState('NIFTY')
+  const [selectedInterval, setSelectedInterval] = useState<'D' | '60' | '30' | '15' | '5' | '1'>('D')
 
   // WebSocket for real-time portfolio value updates
   const handlePortfolioUpdate = useCallback((data: any) => {
@@ -113,51 +118,57 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Portfolio Chart */}
+        {/* Advanced Market Chart - TradingView */}
         <div className="lg:col-span-2 card-glass rounded-xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-lg font-semibold text-white">Portfolio vs Nifty 50</h2>
-              <p className="text-sm text-muted-foreground">Performance comparison (Last 30 days)</p>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <BarChart3 className="w-5 h-5 text-purple-500" />
+              <div>
+                <h2 className="text-lg font-semibold text-white">Market Chart</h2>
+                <p className="text-sm text-muted-foreground">Professional charting with 50+ indicators</p>
+              </div>
             </div>
-            <div className="flex gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                <span className="text-sm text-muted-foreground">Portfolio</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                <span className="text-sm text-muted-foreground">Nifty 50</span>
-              </div>
+            <div className="flex items-center gap-2">
+              {/* Symbol Selector */}
+              <select
+                value={selectedSymbol}
+                onChange={(e) => setSelectedSymbol(e.target.value)}
+                className="px-3 py-1.5 bg-dark-700 hover:bg-dark-600 text-white text-sm rounded-lg border border-dark-600 focus:outline-none focus:border-purple-500 transition-colors"
+              >
+                <option value="NIFTY">NIFTY 50</option>
+                <option value="BANKNIFTY">BANK NIFTY</option>
+                <option value="RELIANCE">RELIANCE</option>
+                <option value="TCS">TCS</option>
+                <option value="INFY">INFOSYS</option>
+                <option value="HDFCBANK">HDFC BANK</option>
+                <option value="ICICIBANK">ICICI BANK</option>
+                <option value="SBIN">SBI</option>
+              </select>
+              {/* Interval Selector */}
+              <select
+                value={selectedInterval}
+                onChange={(e) => setSelectedInterval(e.target.value as any)}
+                className="px-3 py-1.5 bg-dark-700 hover:bg-dark-600 text-white text-sm rounded-lg border border-dark-600 focus:outline-none focus:border-purple-500 transition-colors"
+              >
+                <option value="1">1 min</option>
+                <option value="5">5 min</option>
+                <option value="15">15 min</option>
+                <option value="60">1 hour</option>
+                <option value="D">Daily</option>
+              </select>
             </div>
           </div>
 
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="colorPortfolio" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="colorNifty" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1f2740" />
-              <XAxis dataKey="date" stroke="#888" />
-              <YAxis stroke="#888" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#0f1429',
-                  border: '1px solid #1f2740',
-                  borderRadius: '8px',
-                }}
-              />
-              <Area type="monotone" dataKey="portfolio" stroke="#8b5cf6" strokeWidth={2} fillOpacity={1} fill="url(#colorPortfolio)" />
-              <Area type="monotone" dataKey="nifty" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorNifty)" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <TradingViewChart
+            symbol={selectedSymbol}
+            exchange="NSE"
+            interval={selectedInterval}
+            theme="dark"
+            height={400}
+            showToolbar={true}
+            allowSymbolChange={false}
+            studies={['MASimple@tv-basicstudies', 'RSI@tv-basicstudies', 'MACD@tv-basicstudies']}
+          />
         </div>
 
         {/* AI Market Regime */}

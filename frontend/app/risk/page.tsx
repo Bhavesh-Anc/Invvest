@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, TrendingDown, BarChart3 } from 'lucide-react'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
 import { AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import TradingViewChart from '@/components/charts/TradingViewChart'
 import api from '@/lib/api'
 import Loading from '@/components/ui/Loading'
 import ErrorDisplay from '@/components/ui/ErrorDisplay'
@@ -169,6 +170,27 @@ export default function RiskManagementPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Market Volatility Chart - India VIX */}
+      <div className="card-glass rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <TrendingDown className="w-5 h-5 text-warning" />
+          <div>
+            <h2 className="text-lg font-semibold text-white">India VIX - Market Volatility Index</h2>
+            <p className="text-sm text-muted-foreground">Fear gauge for Indian equity market</p>
+          </div>
+        </div>
+        <TradingViewChart
+          symbol="INDIAVIX"
+          exchange="NSE"
+          interval="D"
+          theme="dark"
+          height={350}
+          showToolbar={true}
+          allowSymbolChange={false}
+          studies={['BB@tv-basicstudies', 'MASimple@tv-basicstudies']}
+        />
       </div>
 
       {/* Bottom Row */}

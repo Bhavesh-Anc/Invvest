@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react'
 import {
   TrendingUp, TrendingDown, PieChart, Activity,
   Shield, ArrowUpRight, ArrowDownRight, AlertCircle,
-  Calendar, BarChart3, Target
+  Calendar, BarChart3, Target, LineChart as LineChartIcon
 } from 'lucide-react'
 import {
   AreaChart, Area, BarChart, Bar, ScatterChart, Scatter,
@@ -12,6 +12,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts'
 import MetricCard from '@/components/ui/MetricCard'
+import TradingViewChart from '@/components/charts/TradingViewChart'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
 import api from '@/lib/api'
 import Loading from '@/components/ui/Loading'
@@ -26,6 +27,7 @@ export default function PortfolioAnalyticsPage() {
   const [riskMetrics, setRiskMetrics] = useState<any>(null)
   const [correlationData, setCorrelationData] = useState<any[]>([])
   const [drawdownData, setDrawdownData] = useState<any[]>([])
+  const [selectedHolding, setSelectedHolding] = useState<string | null>(null)
 
   useEffect(() => {
     fetchPortfolioData()
@@ -203,7 +205,11 @@ export default function PortfolioAnalyticsPage() {
             </thead>
             <tbody>
               {holdings.map((holding: any, index: number) => (
-                <tr key={index} className="border-b border-dark-700/50 hover:bg-dark-700/30 transition-colors">
+                <tr
+                  key={index}
+                  className={`border-b border-dark-700/50 hover:bg-dark-700/30 transition-colors cursor-pointer ${selectedHolding === holding.symbol ? 'bg-purple-500/10' : ''}`}
+                  onClick={() => setSelectedHolding(holding.symbol)}
+                >
                   <td className="py-3 px-4">
                     <div className="flex flex-col">
                       <span className="text-sm font-medium text-white">{holding.symbol}</span>
@@ -238,6 +244,37 @@ export default function PortfolioAnalyticsPage() {
           </table>
         </div>
       </div>
+
+      {/* Stock Technical Analysis - TradingView Chart */}
+      {selectedHolding && (
+        <div className="card-glass rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <LineChartIcon className="w-5 h-5 text-blue-500" />
+              <div>
+                <h2 className="text-xl font-bold text-white">Technical Analysis - {selectedHolding}</h2>
+                <p className="text-sm text-muted-foreground">Click any holding above to view its chart</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setSelectedHolding(null)}
+              className="px-3 py-1.5 bg-dark-700 hover:bg-dark-600 text-white text-sm rounded-lg transition-colors"
+            >
+              Close Chart
+            </button>
+          </div>
+          <TradingViewChart
+            symbol={selectedHolding}
+            exchange="NSE"
+            interval="D"
+            theme="dark"
+            height={500}
+            showToolbar={true}
+            allowSymbolChange={false}
+            studies={['MASimple@tv-basicstudies', 'RSI@tv-basicstudies', 'MACD@tv-basicstudies', 'BB@tv-basicstudies']}
+          />
+        </div>
+      )}
 
       {/* Monthly Returns */}
       {monthlyReturns && monthlyReturns.length > 0 && (
