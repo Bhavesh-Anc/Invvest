@@ -17,7 +17,11 @@ from api.routes import (
     algo,
     risk,
     backtest,
-    models as ai_models
+    models as ai_models,
+    options_advanced,
+    ml_strategies,
+    execution,
+    market_making
 )
 from core.config import settings
 
@@ -71,6 +75,12 @@ app.include_router(algo.router, prefix="/api/algo", tags=["Algo Trading"])
 app.include_router(risk.router, prefix="/api/risk", tags=["Risk Management"])
 app.include_router(backtest.router, prefix="/api/backtest", tags=["Backtesting"])
 app.include_router(ai_models.router, prefix="/api/models", tags=["AI Models"])
+
+# New institutional quant strategy APIs
+app.include_router(options_advanced.router, prefix="/api/options", tags=["Options Advanced"])
+app.include_router(ml_strategies.router, prefix="/api/ml", tags=["Machine Learning"])
+app.include_router(execution.router, prefix="/api/execution", tags=["Optimal Execution"])
+app.include_router(market_making.router, prefix="/api/market-making", tags=["Market Making"])
 
 # Health check endpoint
 @app.get("/api/health")
