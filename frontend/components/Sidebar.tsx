@@ -13,6 +13,7 @@ import {
   LineChart,
   Brain,
   Settings,
+  Activity,
 } from 'lucide-react'
 
 const navigation = [
@@ -21,6 +22,7 @@ const navigation = [
   { name: 'Options Analytics', href: '/options', icon: TrendingUp },
   { name: 'Strategy Builder', href: '/strategy', icon: Layers },
   { name: 'Algo Trading', href: '/algo', icon: Bot },
+  { name: 'Market Making', href: '/market-making', icon: Activity },
   { name: 'Risk Management', href: '/risk', icon: Shield },
   { name: 'Backtesting', href: '/backtest', icon: LineChart },
   { name: 'AI Models', href: '/models', icon: Brain },

@@ -5,7 +5,7 @@ import {
   Play, Pause, Square, TrendingUp, TrendingDown,
   Activity, Zap, Clock, DollarSign, Target,
   AlertCircle, CheckCircle, XCircle, Settings,
-  BarChart3, LineChart as LineChartIcon, RefreshCw
+  BarChart3, LineChart as LineChartIcon, RefreshCw, Brain
 } from 'lucide-react'
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
@@ -17,6 +17,10 @@ import { formatCurrency, formatPercentage } from '@/lib/utils'
 import api from '@/lib/api'
 import Loading from '@/components/ui/Loading'
 import ErrorDisplay from '@/components/ui/ErrorDisplay'
+import MLSignals from '@/components/strategies/MLSignals'
+import ExecutionAnalytics from '@/components/strategies/ExecutionAnalytics'
+
+type AlgoPageTab = 'strategies' | 'ml_signals' | 'execution'
 
 interface AlgoStrategy {
   id: string
@@ -39,6 +43,7 @@ export default function AlgoTradingPage() {
   const [technicalIndicators, setTechnicalIndicators] = useState<any[]>([])
   const [executionTimeline, setExecutionTimeline] = useState<any[]>([])
   const [microstructure, setMicrostructure] = useState<any>(null)
+  const [activeTab, setActiveTab] = useState<AlgoPageTab>('strategies')
 
   useEffect(() => {
     fetchAlgoData()
@@ -109,6 +114,33 @@ export default function AlgoTradingPage() {
           </button>
         </div>
       </div>
+
+      {/* Page Tabs */}
+      <div className="flex border-b border-dark-600">
+        {[
+          { key: 'strategies' as AlgoPageTab, label: 'Live Strategies', icon: <Activity className="w-4 h-4" /> },
+          { key: 'ml_signals' as AlgoPageTab, label: 'ML Signals', icon: <Brain className="w-4 h-4" /> },
+          { key: 'execution' as AlgoPageTab, label: 'Execution Algorithms', icon: <Zap className="w-4 h-4" /> },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === tab.key
+                ? 'border-blue-500 text-white'
+                : 'border-transparent text-muted-foreground hover:text-white'
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'ml_signals' && <MLSignals />}
+      {activeTab === 'execution' && <ExecutionAnalytics />}
+
+      {activeTab === 'strategies' && <>
 
       {/* Overall Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -423,6 +455,8 @@ export default function AlgoTradingPage() {
           </table>
         </div>
       </div>
+
+      </>}
     </div>
   )
 }

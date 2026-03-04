@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import {
   TrendingUp, TrendingDown, Activity, Target,
   AlertCircle, Search, RefreshCw, ChevronDown,
-  Calendar, DollarSign, Zap
+  Calendar, DollarSign, Zap, BarChart3
 } from 'lucide-react'
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area,
@@ -16,8 +16,12 @@ import { formatCurrency, formatPercentage } from '@/lib/utils'
 import api from '@/lib/api'
 import Loading from '@/components/ui/Loading'
 import ErrorDisplay from '@/components/ui/ErrorDisplay'
+import VolatilityArbitrage from '@/components/strategies/VolatilityArbitrage'
+
+type PageTab = 'analytics' | 'vol_arb'
 
 export default function OptionsAnalyticsPage() {
+  const [activeTab, setActiveTab] = useState<PageTab>('analytics')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [selectedStock, setSelectedStock] = useState('NIFTY')
@@ -74,7 +78,7 @@ export default function OptionsAnalyticsPage() {
           <p className="text-muted-foreground">Advanced Greeks, Options Chain & Volatility Analysis</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="px-4 py-2 bg-dark-700 hover:bg-dark-600 text-white rounded-lg transition-colors">
+          <button onClick={fetchOptionsData} className="px-4 py-2 bg-dark-700 hover:bg-dark-600 text-white rounded-lg transition-colors">
             <RefreshCw className="w-4 h-4 inline mr-2" />
             Refresh
           </button>
@@ -83,6 +87,31 @@ export default function OptionsAnalyticsPage() {
           </button>
         </div>
       </div>
+
+      {/* Page Tabs */}
+      <div className="flex border-b border-dark-600">
+        {[
+          { key: 'analytics' as PageTab, label: 'Options Chain & Greeks', icon: <Activity className="w-4 h-4" /> },
+          { key: 'vol_arb' as PageTab, label: 'Volatility Arbitrage', icon: <BarChart3 className="w-4 h-4" /> },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === tab.key
+                ? 'border-purple-500 text-white'
+                : 'border-transparent text-muted-foreground hover:text-white'
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'vol_arb' && <VolatilityArbitrage />}
+
+      {activeTab === 'analytics' && <>
 
       {/* Stock & Expiry Selector */}
       <div className="card-glass rounded-xl p-4">
@@ -446,6 +475,8 @@ export default function OptionsAnalyticsPage() {
           </div>
         </div>
       </div>
+
+      </>}
     </div>
   )
 }
