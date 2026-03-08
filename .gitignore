@@ -6,6 +6,7 @@ config/secrets.py
 *.pem
 *.env
 .env
+.kite/
 
 # Data & Databases  
 data/*.db

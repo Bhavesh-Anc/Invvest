@@ -21,7 +21,8 @@ from api.routes import (
     options_advanced,
     ml_strategies,
     execution,
-    market_making
+    market_making,
+    kite
 )
 from core.config import settings
 
@@ -81,6 +82,9 @@ app.include_router(options_advanced.router, prefix="/api/options", tags=["Option
 app.include_router(ml_strategies.router, prefix="/api/ml", tags=["Machine Learning"])
 app.include_router(execution.router, prefix="/api/execution", tags=["Optimal Execution"])
 app.include_router(market_making.router, prefix="/api/market-making", tags=["Market Making"])
+
+# Kite Connect API integration for live NSE/BSE data and order execution
+app.include_router(kite.router, prefix="/api/kite", tags=["Kite Connect"])
 
 # Health check endpoint
 @app.get("/api/health")
