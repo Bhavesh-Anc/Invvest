@@ -14,7 +14,7 @@ import numpy as np
 import sys
 sys.path.append('../..')
 from strategies.options_strategies import VolatilityArbitrage, GammaScalping, DispersionTrading, VolatilitySurface
-from utils.indian_market import IndianMarketData
+from providers.market_data import get_market_data_provider
 from utils.options_pricing import BlackScholes
 
 router = APIRouter()
@@ -94,14 +94,20 @@ async def get_volatility_opportunities(
     Sell when IV > RV (option overpriced)
     """
     try:
-        market_data = IndianMarketData()
+        provider = get_market_data_provider()
         vol_arb = VolatilityArbitrage()
 
         # Fetch historical prices
         end_date = datetime.now()
         start_date = end_date - timedelta(days=90)
 
-        df = market_data.get_historical_data(symbol, start_date, end_date)
+        df = provider.get_historical_data(
+            symbol=symbol,
+            exchange="NSE",
+            from_date=start_date,
+            to_date=end_date,
+            interval="day"
+        )
 
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No data found for {symbol}")
@@ -117,38 +123,52 @@ async def get_volatility_opportunities(
         # Get current spot price
         spot_price = float(prices.iloc[-1])
 
-        # Mock options chain (in production, fetch from NSE)
-        # Generate ATM, OTM, ITM options
-        strikes = [
-            spot_price * 0.95,  # ITM
-            spot_price,         # ATM
-            spot_price * 1.05   # OTM
-        ]
+        # Get options chain from provider (uses Kite if authenticated, mock otherwise)
+        # Get next monthly expiry
+        next_month = (datetime.now() + timedelta(days=30)).strftime("%b%y").upper()
+        expiry = f"{next_month[:3]}{next_month[3:]}"  # e.g., "JAN24"
 
-        options_chain = []
+        options_chain_raw = provider.get_options_chain(symbol, expiry)
+
+        # Calculate implied volatility from option prices using Black-Scholes
         bs = BlackScholes()
+        options_chain = []
 
-        for strike in strikes:
-            # Mock implied volatility (in production, fetch from market)
-            # Simulate vol smile: ITM higher, OTM lower
-            if strike < spot_price:
-                iv = forecasted_rv * 1.15  # ITM overpriced
-            elif strike > spot_price:
-                iv = forecasted_rv * 0.90  # OTM underpriced
+        for option in options_chain_raw[:50]:  # Limit to 50 options to avoid overwhelming
+            strike = option.get('strike', 0)
+            ltp = option.get('ltp', 0)
+            option_type = option.get('option_type', 'CE')
+
+            if ltp <= 0 or strike <= 0:
+                continue
+
+            # If IV already provided (from Kite), use it
+            if 'iv' in option:
+                iv = option['iv']
             else:
-                iv = forecasted_rv * 1.05  # ATM slightly high
-
-            # Calculate option price
-            opt_price = bs.black_scholes_price(
-                spot_price, strike, 0.0833, 0.07, iv, 'call'
-            )
+                # Otherwise, calculate from price (reverse Black-Scholes)
+                try:
+                    iv = bs.implied_volatility(
+                        option_price=ltp,
+                        spot_price=spot_price,
+                        strike=strike,
+                        time_to_maturity=0.0833,  # ~1 month
+                        risk_free_rate=0.07,
+                        option_type='call' if option_type == 'CE' else 'put'
+                    )
+                except:
+                    # If IV calculation fails, use forecasted RV as baseline
+                    iv = forecasted_rv
 
             options_chain.append({
                 'strike': strike,
-                'type': 'call',
-                'ltp': opt_price,
+                'type': 'call' if option_type == 'CE' else 'put',
+                'ltp': ltp,
                 'implied_volatility': iv
             })
+
+        if not options_chain:
+            raise HTTPException(status_code=404, detail=f"No options data found for {symbol}")
 
         # Find mispriced options
         opportunities = vol_arb.find_mispriced_options(

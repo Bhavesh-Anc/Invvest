@@ -3,13 +3,16 @@ Kite Connect API Routes
 Provides authentication, market data, and order execution via Zerodha Kite
 """
 
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
+import json
+import asyncio
 
 from integrations.kite_client import get_kite_client, KiteAPIClient
+from integrations.kite_streamer import get_stream_manager
 from config.kite_config import get_kite_config
 
 logger = logging.getLogger(__name__)
@@ -506,4 +509,144 @@ async def get_profile():
         return profile
     except Exception as e:
         logger.error(f"Failed to get profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== WebSocket Streaming =====
+
+
+# Store active WebSocket connections
+active_websockets: List[WebSocket] = []
+tick_buffer: List[Dict] = []  # Buffer for ticks to broadcast
+
+
+@router.websocket("/ws/stream")
+async def websocket_stream(websocket: WebSocket, tokens: str = Query(..., description="Comma-separated instrument tokens")):
+    """
+    WebSocket endpoint for real-time market data streaming
+
+    Args:
+        tokens: Comma-separated list of instrument tokens (e.g., "256265,5633")
+
+    Usage:
+        ws = new WebSocket("ws://localhost:8000/api/kite/ws/stream?tokens=256265,5633")
+        ws.onmessage = (event) => {
+            const ticks = JSON.parse(event.data)
+            console.log(ticks)
+        }
+    """
+    await websocket.accept()
+    active_websockets.append(websocket)
+    logger.info(f"WebSocket client connected. Total connections: {len(active_websockets)}")
+
+    try:
+        # Parse instrument tokens
+        instrument_tokens = [int(t.strip()) for t in tokens.split(',') if t.strip().isdigit()]
+
+        if not instrument_tokens:
+            await websocket.send_json({"error": "No valid instrument tokens provided"})
+            await websocket.close()
+            return
+
+        # Get stream manager
+        config = get_kite_config()
+        if not config.has_access_token():
+            await websocket.send_json({"error": "Not authenticated. Please login to Kite first."})
+            await websocket.close()
+            return
+
+        stream_manager = get_stream_manager()
+
+        # Define tick callback
+        async def broadcast_ticks(ticks: List[Dict]):
+            """Broadcast ticks to all connected WebSocket clients"""
+            if not active_websockets:
+                return
+
+            message = json.dumps(ticks)
+            disconnected = []
+
+            for ws in active_websockets:
+                try:
+                    await ws.send_text(message)
+                except Exception as e:
+                    logger.error(f"Error sending to WebSocket: {e}")
+                    disconnected.append(ws)
+
+            # Remove disconnected clients
+            for ws in disconnected:
+                if ws in active_websockets:
+                    active_websockets.remove(ws)
+
+        # Register callback (wrap async function)
+        def tick_handler(ticks):
+            asyncio.create_task(broadcast_ticks(ticks))
+
+        stream_manager.on_tick(tick_handler)
+
+        # Subscribe to tokens
+        stream_manager.subscribe(instrument_tokens)
+
+        # Start streaming if not already started
+        if not stream_manager.is_connected:
+            stream_manager.start(threaded=True)
+
+        await websocket.send_json({
+            "status": "subscribed",
+            "tokens": instrument_tokens,
+            "message": "Real-time streaming started"
+        })
+
+        # Keep connection alive
+        while True:
+            try:
+                # Wait for messages from client (e.g., ping/pong)
+                data = await websocket.receive_text()
+
+                # Handle ping
+                if data == "ping":
+                    await websocket.send_text("pong")
+
+            except WebSocketDisconnect:
+                logger.info("WebSocket client disconnected")
+                break
+            except Exception as e:
+                logger.error(f"WebSocket error: {e}")
+                break
+
+    except Exception as e:
+        logger.error(f"WebSocket stream error: {e}")
+        await websocket.send_json({"error": str(e)})
+
+    finally:
+        if websocket in active_websockets:
+            active_websockets.remove(websocket)
+        logger.info(f"WebSocket connection closed. Remaining: {len(active_websockets)}")
+
+
+@router.get("/stream/status")
+async def get_stream_status():
+    """Get WebSocket streaming status"""
+    try:
+        config = get_kite_config()
+        is_authenticated = config.has_access_token()
+
+        status = {
+            "authenticated": is_authenticated,
+            "active_connections": len(active_websockets),
+            "streaming_available": is_authenticated,
+        }
+
+        if is_authenticated:
+            try:
+                stream_manager = get_stream_manager()
+                status["is_connected"] = stream_manager.is_connected
+                status["subscribed_tokens"] = stream_manager.subscribed_tokens
+            except:
+                status["is_connected"] = False
+
+        return status
+
+    except Exception as e:
+        logger.error(f"Failed to get stream status: {e}")
         raise HTTPException(status_code=500, detail=str(e))

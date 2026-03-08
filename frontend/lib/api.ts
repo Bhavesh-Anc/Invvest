@@ -397,6 +397,61 @@ export const healthAPI = {
   check: () => fetchAPI('/api/health'),
 }
 
+// Kite Connect API
+export const kiteAPI = {
+  // Authentication
+  getLoginUrl: () => fetchAPI('/api/kite/auth/login-url'),
+  generateSession: (apiKey: string, apiSecret: string, requestToken: string) =>
+    fetchAPI('/api/kite/auth/session', {
+      method: 'POST',
+      body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret, request_token: requestToken }),
+    }),
+  getAuthStatus: () => fetchAPI('/api/kite/auth/status'),
+  logout: () => fetchAPI('/api/kite/auth/logout', { method: 'POST' }),
+  saveConfig: (apiKey: string, apiSecret: string) =>
+    fetchAPI('/api/kite/config', {
+      method: 'POST',
+      body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret }),
+    }),
+
+  // Market Data
+  getQuote: (symbols: string) => fetchAPI(`/api/kite/quote?symbols=${encodeURIComponent(symbols)}`),
+  getLTP: (symbols: string) => fetchAPI(`/api/kite/ltp?symbols=${encodeURIComponent(symbols)}`),
+  getHistoricalData: (symbol: string, exchange: string, fromDate: string, toDate: string, interval: string = 'day') =>
+    fetchAPI('/api/kite/historical', {
+      method: 'POST',
+      body: JSON.stringify({ symbol, exchange, from_date: fromDate, to_date: toDate, interval }),
+    }),
+  getInstruments: (exchange: string) => fetchAPI(`/api/kite/instruments/${exchange}`),
+  searchInstruments: (query: string, exchange: string = 'NSE') =>
+    fetchAPI(`/api/kite/search?query=${encodeURIComponent(query)}&exchange=${exchange}`),
+
+  // Order Execution
+  placeOrder: (order: any) =>
+    fetchAPI('/api/kite/order/place', {
+      method: 'POST',
+      body: JSON.stringify(order),
+    }),
+  cancelOrder: (orderId: string) =>
+    fetchAPI(`/api/kite/order/${orderId}`, { method: 'DELETE' }),
+  getOrders: () => fetchAPI('/api/kite/orders'),
+  getTrades: () => fetchAPI('/api/kite/trades'),
+
+  // Portfolio
+  getPositions: () => fetchAPI('/api/kite/positions'),
+  getHoldings: () => fetchAPI('/api/kite/holdings'),
+  getMargins: (segment?: string) =>
+    fetchAPI(`/api/kite/margins${segment ? `?segment=${segment}` : ''}`),
+  getProfile: () => fetchAPI('/api/kite/profile'),
+
+  // WebSocket Streaming
+  connectStream: (tokens: string): WebSocket => {
+    const wsUrl = API_BASE_URL.replace('http', 'ws')
+    return new WebSocket(`${wsUrl}/api/kite/ws/stream?tokens=${tokens}`)
+  },
+  getStreamStatus: () => fetchAPI('/api/kite/stream/status'),
+}
+
 // Export all APIs
 export const api = {
   dashboard: dashboardAPI,
@@ -413,6 +468,8 @@ export const api = {
   mlStrategies: mlStrategiesAPI,
   execution: executionAPI,
   marketMaking: marketMakingAPI,
+  // Kite Connect integration
+  kite: kiteAPI,
 }
 
 export default api
