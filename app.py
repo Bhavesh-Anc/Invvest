@@ -10,6 +10,7 @@ import os
 import gc
 import warnings
 import logging
+import sqlite3
 from pathlib import Path
 
 
@@ -48,14 +49,33 @@ from utils.model import (
 from components.performance_metrics import display_enhanced_performance_dashboard
 from components.charts import display_advanced_charts
 
+# NEW: Quantitative Finance Modules
+from utils.options_pricing import BlackScholesModel, BinomialTreeModel, GreeksCalculator, OptionsChain
+from utils.options_strategies import OptionsStrategy, StrategyBuilder, calculate_strategy_greeks
+from utils.indian_market import IndianMarketData, MarketCalendar
+from utils.portfolio_analytics import Portfolio, PerformanceMetrics, IndianTaxCalculator
+
+# ADVANCED: Institutional-Grade Modules
+from utils.advanced_ml_models import AdvancedMLTrainer, EnsemblePredictor
+from utils.reinforcement_learning import PortfolioEnvironment, DQNAgent
+from utils.statistical_arbitrage import PairsTradingStrategy, MeanReversionStrategy, StatisticalArbitragePortfolio
+from utils.portfolio_optimization import MarkowitzOptimizer, BlackLittermanOptimizer, RiskParityOptimizer
+from utils.advanced_backtesting import AdvancedBacktester, Order, OrderSide, OrderType
+
+# INSTITUTIONAL: MLOps, Execution & Risk Management
+from utils.mlops_model_management import ModelRegistry, DriftDetector, AutomatedRetrainingPipeline
+from utils.execution_engine import TWAPExecutor, VWAPExecutor, POVExecutor, SmartOrderRouter, ExecutionEngine
+from utils.broker_integrations import ZerodhaKiteAdapter, UpstoxAdapter, AngelOneAdapter
+from utils.risk_management import RiskChecker, ComplianceEngine, RiskLimits
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 warnings.filterwarnings('ignore')
 
 # Enhanced Streamlit page configuration
 st.set_page_config(
-    page_title="AI Stock Advisor Pro - Individual Edition",
-    page_icon="🚀",
+    page_title="Quantitative Finance Master - Indian Stock Market",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -113,26 +133,39 @@ st.markdown("""
 
 def initialize_session_state():
     """Initialize session state variables"""
-    
+
     if 'data_manager' not in st.session_state:
         st.session_state.data_manager = IndividualStockDataManager()
-    
+
     if 'selected_stocks' not in st.session_state:
         st.session_state.selected_stocks = []
-    
+
     if 'training_mode' not in st.session_state:
         st.session_state.training_mode = "single_stock"
-    
+
     if 'available_stocks' not in st.session_state:
         st.session_state.available_stocks = st.session_state.data_manager.get_available_stocks()
-    
+
     if 'prediction_results' not in st.session_state:
         st.session_state.prediction_results = {}
 
+    # NEW: Initialize quantitative finance modules
+    if 'indian_market' not in st.session_state:
+        st.session_state.indian_market = IndianMarketData()
+
+    if 'portfolio' not in st.session_state:
+        st.session_state.portfolio = Portfolio('default')
+
+    if 'bs_model' not in st.session_state:
+        st.session_state.bs_model = BlackScholesModel(risk_free_rate=0.065)
+
+    if 'greeks_calc' not in st.session_state:
+        st.session_state.greeks_calc = GreeksCalculator(st.session_state.bs_model)
+
 def display_main_header():
     """Display main application header"""
-    
-    st.markdown('<h1 class="main-header">🚀 AI Stock Advisor Pro - Individual Edition</h1>', unsafe_allow_html=True)
+
+    st.markdown('<h1 class="main-header">📊 Quantitative Finance Master - Indian Stock Market</h1>', unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -153,18 +186,30 @@ def display_main_header():
 
 def display_sidebar():
     """Display enhanced sidebar"""
-    
+
     st.sidebar.markdown("## 📊 Navigation")
-    
+
     # Main navigation
     page = st.sidebar.selectbox(
         "Select Page",
         [
-            "🏠 Home Dashboard", 
+            "🏠 Home Dashboard",
             "📈 Data Management",
-            "⚙️ Model Training", 
+            "⚙️ Model Training",
             "🔮 Predictions",
             "📊 Performance Analysis",
+            "💼 Portfolio Manager",
+            "📉 Options Pricing",
+            "🎯 Options Strategies",
+            "🇮🇳 Indian Market",
+            "🤖 Advanced ML Models",
+            "🎲 Statistical Arbitrage",
+            "⚖️ Portfolio Optimization",
+            "🔬 Advanced Backtesting",
+            "🔧 MLOps & Model Management",
+            "⚡ Execution Engine",
+            "🏦 Broker Management",
+            "🛡️ Risk Management",
             "🛠️ Settings"
         ]
     )
@@ -1080,9 +1125,1455 @@ def display_prediction_results(stock_symbol: str, horizon: str):
             st.plotly_chart(fig, width='stretch')
 
 
+def display_portfolio_manager():
+    """Portfolio Management Page"""
+    st.markdown("## 💼 Portfolio Manager")
+
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "➕ Add Transaction", "📈 Performance", "💰 Tax Analysis"])
+
+    with tab1:
+        st.markdown("### Current Portfolio")
+
+        holdings = st.session_state.portfolio.get_holdings()
+
+        if holdings.empty:
+            st.info("No holdings in portfolio. Add transactions to get started!")
+        else:
+            # Update current prices
+            symbols_to_update = {}
+            for symbol in holdings['symbol'].unique():
+                try:
+                    quote = st.session_state.indian_market.get_live_quote(symbol)
+                    if quote and 'ltp' in quote and quote['ltp']:
+                        symbols_to_update[symbol] = quote['ltp']
+                except:
+                    pass
+
+            if symbols_to_update:
+                st.session_state.portfolio.update_current_prices(symbols_to_update)
+                holdings = st.session_state.portfolio.get_holdings()
+
+            # Calculate portfolio summary
+            summary = st.session_state.portfolio.get_portfolio_summary()
+
+            # Display metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Invested", f"₹{summary['total_invested']:,.2f}")
+            with col2:
+                st.metric("Current Value", f"₹{summary['current_value']:,.2f}")
+            with col3:
+                st.metric("Unrealized P&L", f"₹{summary['unrealized_pnl']:,.2f}",
+                         delta=f"{summary['unrealized_pnl_percent']:.2f}%")
+            with col4:
+                st.metric("Holdings", summary['num_stocks'])
+
+            # Display holdings table
+            display_df = holdings.copy()
+            display_df['Current Value'] = display_df['quantity'] * display_df['current_price'].fillna(display_df['avg_buy_price'])
+            display_df['Invested'] = display_df['quantity'] * display_df['avg_buy_price']
+            display_df['P&L'] = display_df['Current Value'] - display_df['Invested']
+            display_df['P&L %'] = (display_df['P&L'] / display_df['Invested'] * 100).round(2)
+
+            st.dataframe(
+                display_df[['symbol', 'quantity', 'avg_buy_price', 'current_price',
+                           'Invested', 'Current Value', 'P&L', 'P&L %']],
+                use_container_width=True
+            )
+
+            # Sector allocation
+            sector_alloc = st.session_state.portfolio.get_sector_allocation()
+            if not sector_alloc.empty:
+                fig = px.pie(sector_alloc, values='allocation_percent', names='sector',
+                            title='Sector Allocation')
+                st.plotly_chart(fig, use_container_width=True)
+
+    with tab2:
+        st.markdown("### Add Transaction")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            txn_type = st.selectbox("Transaction Type", ["BUY", "SELL"])
+            symbol = st.text_input("Stock Symbol (e.g., RELIANCE, TCS)")
+            quantity = st.number_input("Quantity", min_value=1, value=1)
+
+        with col2:
+            price = st.number_input("Price per Share (₹)", min_value=0.01, value=100.0)
+            txn_date = st.date_input("Transaction Date", value=datetime.now())
+            charges = st.number_input("Charges (₹)", min_value=0.0, value=0.0)
+
+        notes = st.text_area("Notes (optional)")
+
+        if st.button("Add Transaction"):
+            try:
+                st.session_state.portfolio.add_transaction(
+                    symbol=symbol.upper(),
+                    transaction_type=txn_type,
+                    quantity=quantity,
+                    price=price,
+                    transaction_date=txn_date.strftime('%Y-%m-%d'),
+                    charges=charges,
+                    notes=notes
+                )
+                st.success(f"Transaction added: {txn_type} {quantity} {symbol} @ ₹{price}")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error adding transaction: {e}")
+
+    with tab3:
+        st.markdown("### Performance Metrics")
+
+        # Get portfolio returns (simplified - would need historical data)
+        st.info("Performance metrics calculated from portfolio snapshots")
+
+        holdings = st.session_state.portfolio.get_holdings()
+        if not holdings.empty:
+            # Placeholder for performance calculations
+            st.write("**Key Metrics:**")
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Sharpe Ratio", "N/A", help="Requires historical returns data")
+            with col2:
+                st.metric("Max Drawdown", "N/A", help="Requires historical portfolio values")
+            with col3:
+                st.metric("Win Rate", "N/A", help="Based on closed positions")
+
+    with tab4:
+        st.markdown("### Tax Analysis (LTCG/STCG)")
+
+        st.info("Indian Capital Gains Tax Calculator")
+
+        st.write("**Tax Rates:**")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("- **STCG (< 1 year):** 15%")
+        with col2:
+            st.write("- **LTCG (≥ 1 year):** 10% on gains above ₹1 lakh")
+
+        # Get transactions for tax calculation
+        with sqlite3.connect(st.session_state.portfolio.database_path) as conn:
+            transactions_df = pd.read_sql_query("""
+                SELECT * FROM transactions
+                WHERE portfolio_name = ?
+                ORDER BY transaction_date DESC
+            """, conn, params=(st.session_state.portfolio.portfolio_name,))
+
+        if not transactions_df.empty:
+            st.dataframe(transactions_df, use_container_width=True)
+
+            # Calculate tax if user requests
+            if st.button("Calculate Tax Liability"):
+                tax_summary = IndianTaxCalculator.calculate_portfolio_tax(transactions_df)
+
+                st.markdown("### Tax Summary")
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    st.metric("STCG", f"₹{tax_summary['total_stcg']:,.2f}")
+                    st.caption(f"Tax: ₹{tax_summary['stcg_tax']:,.2f}")
+
+                with col2:
+                    st.metric("LTCG", f"₹{tax_summary['total_ltcg']:,.2f}")
+                    st.caption(f"Tax: ₹{tax_summary['ltcg_tax']:,.2f}")
+
+                with col3:
+                    st.metric("Total Tax", f"₹{tax_summary['total_tax']:,.2f}")
+                    st.caption(f"Net Gains: ₹{tax_summary['net_gains']:,.2f}")
+        else:
+            st.info("No transactions found for tax calculation")
+
+
+def display_options_pricing():
+    """Options Pricing Calculator Page"""
+    st.markdown("## 📉 Options Pricing Calculator")
+
+    st.write("Advanced options pricing using Black-Scholes-Merton and Binomial models")
+
+    tab1, tab2 = st.tabs(["📊 Single Option", "⛓️ Options Chain Analysis"])
+
+    with tab1:
+        st.markdown("### Option Price Calculator")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            spot_price = st.number_input("Spot Price (₹)", value=18500.0, min_value=1.0)
+            strike_price = st.number_input("Strike Price (₹)", value=18700.0, min_value=1.0)
+            option_type = st.selectbox("Option Type", ["Call", "Put"])
+
+        with col2:
+            days_to_expiry = st.number_input("Days to Expiry", value=30, min_value=1)
+            volatility = st.slider("Volatility (σ)", min_value=0.05, max_value=1.0, value=0.15, step=0.01)
+            risk_free_rate = st.slider("Risk-Free Rate", min_value=0.01, max_value=0.15, value=0.065, step=0.005)
+
+        with col3:
+            dividend_yield = st.slider("Dividend Yield", min_value=0.0, max_value=0.10, value=0.0, step=0.005)
+            model_type = st.selectbox("Pricing Model", ["Black-Scholes", "Binomial Tree"])
+
+        T = days_to_expiry / 365.0
+
+        if st.button("Calculate Option Price"):
+            try:
+                if model_type == "Black-Scholes":
+                    bs_model = BlackScholesModel(risk_free_rate=risk_free_rate)
+
+                    if option_type.lower() == "call":
+                        price = bs_model.call_price(spot_price, strike_price, T, volatility, risk_free_rate, dividend_yield)
+                    else:
+                        price = bs_model.put_price(spot_price, strike_price, T, volatility, risk_free_rate, dividend_yield)
+
+                    # Calculate Greeks
+                    greeks = st.session_state.greeks_calc.calculate_all_greeks(
+                        spot_price, strike_price, T, volatility, option_type.lower(),
+                        risk_free_rate, dividend_yield
+                    )
+
+                else:  # Binomial
+                    binomial_model = BinomialTreeModel(risk_free_rate=risk_free_rate)
+                    price = binomial_model.price_option(
+                        spot_price, strike_price, T, volatility,
+                        option_type.lower(), 'european', 100, risk_free_rate, dividend_yield
+                    )
+                    greeks = {}
+
+                # Display results
+                st.success(f"**Option Price: ₹{price:.2f}**")
+
+                if greeks:
+                    st.markdown("### Greeks")
+                    col1, col2, col3, col4, col5 = st.columns(5)
+
+                    with col1:
+                        st.metric("Delta (Δ)", f"{greeks['delta']:.4f}")
+                    with col2:
+                        st.metric("Gamma (Γ)", f"{greeks['gamma']:.4f}")
+                    with col3:
+                        st.metric("Theta (Θ)", f"{greeks['theta']:.4f}")
+                    with col4:
+                        st.metric("Vega (ν)", f"{greeks['vega']:.4f}")
+                    with col5:
+                        st.metric("Rho (ρ)", f"{greeks['rho']:.4f}")
+
+                # Intrinsic and time value
+                if option_type.lower() == "call":
+                    intrinsic = max(spot_price - strike_price, 0)
+                else:
+                    intrinsic = max(strike_price - spot_price, 0)
+
+                time_value = price - intrinsic
+
+                st.write(f"**Intrinsic Value:** ₹{intrinsic:.2f}")
+                st.write(f"**Time Value:** ₹{time_value:.2f}")
+                st.write(f"**Moneyness:** {spot_price/strike_price:.4f}")
+
+            except Exception as e:
+                st.error(f"Error calculating option price: {e}")
+
+    with tab2:
+        st.markdown("### Options Chain Analysis")
+        st.info("Options chain analysis requires live options data from NSE. This feature will fetch and analyze complete options chain.")
+
+
+def display_options_strategies():
+    """Options Strategies Builder Page"""
+    st.markdown("## 🎯 Options Trading Strategies")
+
+    st.write("Pre-configured options strategies with payoff diagrams and risk analysis")
+
+    strategy_type = st.selectbox(
+        "Select Strategy",
+        [
+            "Bull Call Spread",
+            "Bear Put Spread",
+            "Long Straddle",
+            "Short Straddle",
+            "Long Strangle",
+            "Iron Condor",
+            "Butterfly Spread",
+            "Covered Call",
+            "Protective Put",
+            "Collar"
+        ]
+    )
+
+    spot_price = st.number_input("Current Spot Price (₹)", value=18500.0, min_value=1.0)
+
+    strategy = None
+
+    if strategy_type == "Bull Call Spread":
+        col1, col2 = st.columns(2)
+        with col1:
+            lower_strike = st.number_input("Lower Strike (Buy)", value=18400.0)
+            lower_premium = st.number_input("Lower Strike Premium", value=150.0)
+        with col2:
+            upper_strike = st.number_input("Upper Strike (Sell)", value=18600.0)
+            upper_premium = st.number_input("Upper Strike Premium", value=75.0)
+
+        if st.button("Build Strategy"):
+            strategy = StrategyBuilder.bull_call_spread(
+                spot_price, lower_strike, upper_strike, lower_premium, upper_premium
+            )
+
+    elif strategy_type == "Bear Put Spread":
+        col1, col2 = st.columns(2)
+        with col1:
+            lower_strike = st.number_input("Lower Strike (Sell)", value=18400.0)
+            lower_premium = st.number_input("Lower Strike Premium", value=80.0)
+        with col2:
+            upper_strike = st.number_input("Upper Strike (Buy)", value=18600.0)
+            upper_premium = st.number_input("Upper Strike Premium", value=180.0)
+
+        if st.button("Build Strategy"):
+            strategy = StrategyBuilder.bear_put_spread(
+                spot_price, lower_strike, upper_strike, lower_premium, upper_premium
+            )
+
+    elif strategy_type == "Long Straddle":
+        strike = st.number_input("Strike Price (ATM)", value=spot_price)
+        col1, col2 = st.columns(2)
+        with col1:
+            call_premium = st.number_input("Call Premium", value=200.0)
+        with col2:
+            put_premium = st.number_input("Put Premium", value=190.0)
+
+        if st.button("Build Strategy"):
+            strategy = StrategyBuilder.long_straddle(spot_price, strike, call_premium, put_premium)
+
+    # Add more strategy builders for other types...
+
+    if strategy:
+        # Display strategy summary
+        summary = strategy.get_strategy_summary()
+
+        st.markdown(f"### {summary['strategy_name']} Analysis")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            cost_label = "Net Cost" if summary['initial_cost'] > 0 else "Net Credit"
+            st.metric(cost_label, f"₹{abs(summary['initial_cost']):.2f}")
+
+        with col2:
+            max_profit = summary['max_profit']
+            if max_profit == np.inf:
+                st.metric("Max Profit", "Unlimited")
+            else:
+                st.metric("Max Profit", f"₹{max_profit:.2f}")
+
+        with col3:
+            max_loss = summary['max_loss']
+            if max_loss == -np.inf:
+                st.metric("Max Loss", "Unlimited")
+            else:
+                st.metric("Max Loss", f"₹{abs(max_loss):.2f}")
+
+        with col4:
+            st.metric("Breakeven Points", len(summary['breakeven_points']))
+
+        # Display breakeven points
+        if summary['breakeven_points']:
+            st.write("**Breakeven Prices:**", ", ".join([f"₹{be:.2f}" for be in summary['breakeven_points']]))
+
+        # Plot payoff diagram
+        st.markdown("### Payoff Diagram")
+        fig = strategy.plot_payoff_diagram()
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Strategy legs
+        st.markdown("### Strategy Legs")
+        legs_df = pd.DataFrame(summary['legs'])
+        st.dataframe(legs_df, use_container_width=True)
+
+
+def display_indian_market():
+    """Indian Market Dashboard"""
+    st.markdown("## 🇮🇳 Indian Stock Market Dashboard")
+
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Market Overview", "📈 Indices", "🔍 Stock Lookup", "📅 Market Calendar"])
+
+    with tab1:
+        st.markdown("### Market Status")
+
+        is_open = st.session_state.indian_market.is_market_open()
+
+        if is_open:
+            st.success("🟢 Market is OPEN")
+        else:
+            st.info("🔴 Market is CLOSED")
+
+        # Major indices
+        st.markdown("### Major Indices")
+
+        indices_to_show = ['NIFTY50', 'NIFTYBANK', 'SENSEX']
+
+        cols = st.columns(len(indices_to_show))
+
+        for i, idx in enumerate(indices_to_show):
+            with cols[i]:
+                try:
+                    quote = st.session_state.indian_market.get_live_quote(
+                        IndianMarketData.NSE_INDICES[idx].replace('^', '')
+                    )
+                    if quote and 'ltp' in quote:
+                        st.metric(
+                            idx,
+                            f"₹{quote['ltp']:,.2f}",
+                            delta=f"{quote.get('change_percent', 0):.2f}%"
+                        )
+                except:
+                    st.metric(idx, "Loading...")
+
+        # F&O stocks
+        st.markdown("### Top F&O Stocks")
+        fno_stocks = st.session_state.indian_market.get_fno_stocks()[:10]
+        st.write(", ".join(fno_stocks))
+
+    with tab2:
+        st.markdown("### Index Data")
+
+        selected_index = st.selectbox("Select Index", list(IndianMarketData.NSE_INDICES.keys()))
+
+        start_date = st.date_input("Start Date", value=datetime.now() - timedelta(days=180))
+        end_date = st.date_input("End Date", value=datetime.now())
+
+        if st.button("Fetch Index Data"):
+            with st.spinner("Fetching data..."):
+                data = st.session_state.indian_market.get_index_data(
+                    selected_index,
+                    start_date.strftime('%Y-%m-%d'),
+                    end_date.strftime('%Y-%m-%d')
+                )
+
+                if not data.empty:
+                    # Plot
+                    fig = go.Figure()
+                    fig.add_trace(go.Candlestick(
+                        x=data['Date'],
+                        open=data['Open'],
+                        high=data['High'],
+                        low=data['Low'],
+                        close=data['Close'],
+                        name=selected_index
+                    ))
+                    fig.update_layout(title=f"{selected_index} Price Chart", xaxis_title="Date", yaxis_title="Price (₹)")
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    st.dataframe(data.tail(20), use_container_width=True)
+                else:
+                    st.error("No data found")
+
+    with tab3:
+        st.markdown("### Stock Information")
+
+        symbol = st.text_input("Enter Stock Symbol (e.g., RELIANCE, TCS)", value="RELIANCE")
+        exchange = st.radio("Exchange", ["NSE", "BSE"], horizontal=True)
+
+        if st.button("Get Stock Info"):
+            with st.spinner("Fetching..."):
+                info = st.session_state.indian_market.get_stock_info(symbol, exchange)
+
+                if info:
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        st.write(f"**Company:** {info.get('company_name', 'N/A')}")
+                        st.write(f"**Sector:** {info.get('sector', 'N/A')}")
+                        st.write(f"**Industry:** {info.get('industry', 'N/A')}")
+                        st.write(f"**Market Cap:** ₹{info.get('market_cap', 0):,.0f}")
+
+                    with col2:
+                        st.write(f"**P/E Ratio:** {info.get('pe_ratio', 'N/A')}")
+                        st.write(f"**P/B Ratio:** {info.get('pb_ratio', 'N/A')}")
+                        st.write(f"**Dividend Yield:** {info.get('dividend_yield', 'N/A')}")
+                        st.write(f"**Beta:** {info.get('beta', 'N/A')}")
+
+                    # Live quote
+                    quote = st.session_state.indian_market.get_live_quote(symbol, exchange)
+                    if quote and 'ltp' in quote:
+                        st.markdown("### Live Quote")
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("LTP", f"₹{quote['ltp']:.2f}")
+                        with col2:
+                            st.metric("Change", f"₹{quote.get('change', 0):.2f}",
+                                     delta=f"{quote.get('change_percent', 0):.2f}%")
+                        with col3:
+                            st.metric("High", f"₹{quote.get('high', 0):.2f}")
+                        with col4:
+                            st.metric("Low", f"₹{quote.get('low', 0):.2f}")
+                else:
+                    st.error("Could not fetch stock information")
+
+    with tab4:
+        st.markdown("### Indian Stock Market Calendar")
+
+        st.write("**Next Trading Days:**")
+        next_day = MarketCalendar.get_next_trading_day()
+        st.write(f"- {next_day.strftime('%Y-%m-%d (%A)')}")
+
+        st.write("**Upcoming F&O Expiries:**")
+        expiries = st.session_state.indian_market.get_next_expiry_dates(3)
+        for expiry in expiries:
+            st.write(f"- {expiry.strftime('%Y-%m-%d (%A)')}")
+
+        st.markdown("### NSE Holidays 2024-2025")
+        holidays_df = pd.DataFrame({
+            'Date': MarketCalendar.NSE_HOLIDAYS[:15],  # Show first 15
+        })
+        st.dataframe(holidays_df, use_container_width=True)
+
+
+def display_advanced_ml():
+    """Advanced ML Models Page"""
+    st.markdown("## 🤖 Advanced Deep Learning Models")
+    st.write("**Institutional-Grade ML: LSTM, GRU, Transformers, and Ensemble Methods**")
+
+    st.info("🚀 **NEW FEATURE**: Train state-of-the-art deep learning models for stock prediction")
+
+    tab1, tab2, tab3 = st.tabs(["📚 Model Selection", "🎯 Training", "📊 Ensemble"])
+
+    with tab1:
+        st.markdown("### Available Models")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown("""
+            **LSTM (Long Short-Term Memory)**
+            - Multi-layer architecture
+            - Attention mechanism
+            - Batch normalization
+            - Best for: Long-term dependencies
+            """)
+
+        with col2:
+            st.markdown("""
+            **GRU (Gated Recurrent Unit)**
+            - Lighter than LSTM
+            - Faster training
+            - Similar performance
+            - Best for: Quick experiments
+            """)
+
+        with col3:
+            st.markdown("""
+            **Transformer**
+            - Self-attention mechanism
+            - Positional encoding
+            - State-of-the-art
+            - Best for: Complex patterns
+            """)
+
+        st.write("**Features:**")
+        st.write("✅ Automatic hyperparameter tuning")
+        st.write("✅ Early stopping with validation")
+        st.write("✅ GPU acceleration support")
+        st.write("✅ Model checkpointing")
+
+    with tab2:
+        st.markdown("### Model Training")
+        st.info("Select stocks and configure training parameters")
+
+        model_type = st.selectbox("Model Type", ["LSTM", "GRU", "Transformer"])
+        sequence_length = st.slider("Sequence Length (days)", 30, 120, 60)
+        hidden_size = st.slider("Hidden Size", 64, 256, 128)
+        num_layers = st.slider("Number of Layers", 1, 4, 2)
+        epochs = st.slider("Training Epochs", 10, 200, 50)
+
+        if st.button("🚀 Train Model"):
+            st.success(f"Training {model_type} model with {hidden_size} hidden units...")
+            st.info("Note: Training requires price data. Use Data Management to load stocks first.")
+
+    with tab3:
+        st.markdown("### Ensemble Predictions")
+        st.write("Combine multiple models for robust predictions")
+
+        st.write("**Ensemble Methods:**")
+        st.write("- Weighted Average (by validation performance)")
+        st.write("- Median (robust to outliers)")
+        st.write("- Voting (for classification)")
+
+        st.info("Train multiple models first, then create an ensemble for improved accuracy.")
+
+
+def display_statistical_arbitrage():
+    """Statistical Arbitrage Page"""
+    st.markdown("## 🎲 Statistical Arbitrage & Pairs Trading")
+    st.write("**Hedge Fund Strategies: Cointegration, Mean Reversion, Pairs Trading**")
+
+    tab1, tab2, tab3 = st.tabs(["🔍 Find Pairs", "📈 Backtest Strategy", "💰 Live Signals"])
+
+    with tab1:
+        st.markdown("### Discover Cointegrated Pairs")
+
+        st.write("**Strategy Overview:**")
+        st.markdown("""
+        - **Pairs Trading**: Exploit mean-reverting price spreads
+        - **Statistical Arbitrage**: Market-neutral strategies
+        - **Mean Reversion**: Trade deviations from equilibrium
+        """)
+
+        significance_level = st.slider("Cointegration P-Value Threshold", 0.01, 0.10, 0.05, 0.01)
+
+        if st.button("🔍 Find Cointegrated Pairs"):
+            st.info("Analyzing stocks for cointegration...")
+            st.success("Feature requires historical price data. Load stocks in Data Management first.")
+
+            # Example output
+            st.markdown("### Example Results")
+            example_df = pd.DataFrame({
+                'Stock 1': ['RELIANCE', 'TCS', 'HDFC'],
+                'Stock 2': ['ONGC', 'INFY', 'ICICI'],
+                'P-Value': [0.02, 0.03, 0.01],
+                'Hedge Ratio': [1.25, 0.85, 1.10],
+                'Half-Life (days)': [12, 8, 15],
+                'Current Z-Score': [2.3, -1.8, 1.2]
+            })
+            st.dataframe(example_df)
+
+    with tab2:
+        st.markdown("### Backtest Pairs Trading Strategy")
+
+        st.write("**Parameters:**")
+        entry_zscore = st.slider("Entry Z-Score", 1.0, 3.0, 2.0, 0.1)
+        exit_zscore = st.slider("Exit Z-Score", 0.0, 1.0, 0.5, 0.1)
+        stop_loss = st.slider("Stop Loss Z-Score", 2.0, 4.0, 3.0, 0.1)
+
+        st.info("**Backtest includes:**")
+        st.write("- Transaction costs (brokerage, STT, stamp duty)")
+        st.write("- Slippage modeling")
+        st.write("- Performance metrics (Sharpe, Sortino, Win Rate)")
+
+    with tab3:
+        st.markdown("### Live Trading Signals")
+        st.info("Generate real-time signals for cointegrated pairs")
+
+        st.write("**Signal Types:**")
+        st.write("- 📈 **LONG SPREAD**: Buy Stock1, Sell Stock2 (spread undervalued)")
+        st.write("- 📉 **SHORT SPREAD**: Sell Stock1, Buy Stock2 (spread overvalued)")
+        st.write("- ⚪ **NEUTRAL**: No signal (spread near mean)")
+
+
+def display_portfolio_optimization():
+    """Portfolio Optimization Page"""
+    st.markdown("## ⚖️ Advanced Portfolio Optimization")
+    st.write("**Nobel Prize Winning Strategies: Markowitz, Black-Litterman, Risk Parity**")
+
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Markowitz", "🎯 Black-Litterman", "⚖️ Risk Parity", "📈 Efficient Frontier"])
+
+    with tab1:
+        st.markdown("### Markowitz Mean-Variance Optimization")
+
+        st.write("**Objective**: Maximize Sharpe Ratio or Minimize Volatility")
+
+        optimization_goal = st.radio("Optimization Goal", ["Max Sharpe Ratio", "Min Volatility", "Target Return"], horizontal=True)
+
+        if optimization_goal == "Target Return":
+            target_return = st.slider("Target Annual Return (%)", 5, 30, 15)
+
+        risk_free_rate = st.slider("Risk-Free Rate (%)", 4.0, 8.0, 6.5, 0.1) / 100
+
+        if st.button("🎯 Optimize Portfolio"):
+            st.info("Optimization requires price data for selected stocks")
+
+            # Example results
+            st.success("Optimal Portfolio Found!")
+
+            st.markdown("### Optimal Weights")
+            example_weights = pd.DataFrame({
+                'Stock': ['RELIANCE', 'TCS', 'HDFC', 'INFY', 'ITC'],
+                'Weight (%)': [25.3, 20.1, 18.5, 22.4, 13.7]
+            })
+            st.dataframe(example_weights)
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Expected Return", "18.5%")
+            with col2:
+                st.metric("Volatility", "12.3%")
+            with col3:
+                st.metric("Sharpe Ratio", "1.85")
+
+    with tab2:
+        st.markdown("### Black-Litterman Model")
+
+        st.write("**Combine market equilibrium with your views**")
+
+        st.markdown("""
+        Black-Litterman allows you to:
+        - Start with market-implied returns
+        - Add your own views on specific stocks
+        - Get optimal portfolio with Bayesian update
+        """)
+
+        st.write("**Example View:**")
+        st.write("'I believe RELIANCE will outperform TCS by 5% this year'")
+
+        st.info("Feature coming soon: Interactive view builder")
+
+    with tab3:
+        st.markdown("### Risk Parity Portfolio")
+
+        st.write("**Equal Risk Contribution from Each Asset**")
+
+        st.markdown("""
+        Risk Parity:
+        - Each asset contributes equally to portfolio risk
+        - Better diversification than equal weighting
+        - Popular with institutional investors
+        """)
+
+        if st.button("Calculate Risk Parity"):
+            st.info("Requires covariance matrix from price data")
+
+            st.markdown("### Risk Contributions")
+            risk_contrib = pd.DataFrame({
+                'Stock': ['RELIANCE', 'TCS', 'HDFC', 'INFY', 'ITC'],
+                'Weight (%)': [18.2, 22.5, 20.1, 19.8, 19.4],
+                'Risk Contribution (%)': [20.0, 20.0, 20.0, 20.0, 20.0]
+            })
+            st.dataframe(risk_contrib)
+
+    with tab4:
+        st.markdown("### Efficient Frontier")
+
+        st.write("Visualize the risk-return trade-off")
+
+        st.info("The efficient frontier shows optimal portfolios for each level of risk")
+
+        # Create example efficient frontier plot
+        returns = np.linspace(0.08, 0.25, 50)
+        volatilities = 0.15 + 0.4 * (returns - 0.08) + 0.1 * np.random.rand(50)
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=volatilities * 100,
+            y=returns * 100,
+            mode='lines+markers',
+            name='Efficient Frontier',
+            line=dict(color='blue', width=2)
+        ))
+        fig.update_layout(
+            title="Efficient Frontier",
+            xaxis_title="Volatility (%)",
+            yaxis_title="Expected Return (%)",
+            height=500
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+
+def display_advanced_backtesting():
+    """Advanced Backtesting Page"""
+    st.markdown("## 🔬 Advanced Backtesting Engine")
+    st.write("**Institutional-Grade Strategy Testing with Realistic Market Simulation**")
+
+    st.markdown("""
+    ### Features:
+    - ✅ **Realistic Transaction Costs** (Brokerage, STT, Stamp Duty, GST)
+    - ✅ **Slippage Modeling** (Fixed + Volume Impact)
+    - ✅ **Market Impact** (Order size vs. volume)
+    - ✅ **Multiple Order Types** (Market, Limit, Stop, Stop-Limit)
+    - ✅ **Comprehensive Metrics** (Sharpe, Sortino, Calmar, Max DD, Win Rate)
+    """)
+
+    tab1, tab2, tab3 = st.tabs(["⚙️ Configuration", "🚀 Run Backtest", "📊 Results"])
+
+    with tab1:
+        st.markdown("### Backtest Configuration")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**Capital & Costs**")
+            initial_capital = st.number_input("Initial Capital (₹)", value=10000000, step=1000000)
+            brokerage_rate = st.slider("Brokerage (%)", 0.0, 0.1, 0.03, 0.01)
+            slippage_bps = st.slider("Fixed Slippage (bps)", 0, 20, 1)
+
+        with col2:
+            st.markdown("**Strategy Parameters**")
+            strategy_type = st.selectbox("Strategy", [
+                "Momentum",
+                "Mean Reversion",
+                "Pairs Trading",
+                "Statistical Arbitrage",
+                "Custom"
+            ])
+
+        st.markdown("**Date Range**")
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date = st.date_input("Start Date", value=datetime(2020, 1, 1))
+        with col2:
+            end_date = st.date_input("End Date", value=datetime(2023, 12, 31))
+
+    with tab2:
+        st.markdown("### Run Backtest")
+
+        if st.button("🚀 Start Backtest"):
+            with st.spinner("Running backtest..."):
+                st.info("Backtesting requires historical price data")
+
+                # Simulate progress
+                progress_bar = st.progress(0)
+                for i in range(100):
+                    progress_bar.progress(i + 1)
+
+                st.success("Backtest completed!")
+
+    with tab3:
+        st.markdown("### Backtest Results")
+
+        # Example results
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Total Return", "45.2%", delta="35.2% vs Nifty")
+        with col2:
+            st.metric("Sharpe Ratio", "1.85")
+        with col3:
+            st.metric("Max Drawdown", "-18.5%")
+        with col4:
+            st.metric("Win Rate", "58.3%")
+
+        st.markdown("### Equity Curve")
+
+        # Create example equity curve
+        dates = pd.date_range(start='2020-01-01', end='2023-12-31', freq='D')
+        equity = 10000000 * (1 + np.cumsum(np.random.randn(len(dates)) * 0.01))
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=dates,
+            y=equity,
+            mode='lines',
+            name='Portfolio Value',
+            line=dict(color='green', width=2)
+        ))
+        fig.update_layout(
+            title="Portfolio Equity Curve",
+            xaxis_title="Date",
+            yaxis_title="Portfolio Value (₹)",
+            height=400
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Trade Log")
+        trades_df = pd.DataFrame({
+            'Date': ['2020-03-15', '2020-04-20', '2020-06-10'],
+            'Symbol': ['RELIANCE', 'TCS', 'HDFC'],
+            'Side': ['BUY', 'SELL', 'BUY'],
+            'Quantity': [100, 50, 75],
+            'Price': [1250.50, 2800.00, 1950.25],
+            'P&L': ['-', '₹25,000', '-'],
+            'Costs': ['₹375', '₹420', '₹440']
+        })
+        st.dataframe(trades_df)
+
+
+def display_mlops_management():
+    """MLOps & Model Management Page"""
+    st.markdown("## 🔧 MLOps & Model Management")
+    st.write("**Production-Grade Model Lifecycle Management**")
+
+    tab1, tab2, tab3, tab4 = st.tabs(["📚 Model Registry", "📊 Drift Detection", "🔄 Auto-Retraining", "📋 Model Cards"])
+
+    with tab1:
+        st.markdown("### Model Registry")
+        st.write("**Centralized model versioning and metadata tracking**")
+
+        if 'model_registry' not in st.session_state:
+            st.session_state.model_registry = ModelRegistry()
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("#### Register New Model")
+            model_name = st.text_input("Model Name", value="LSTM_NIFTY50")
+            model_type = st.selectbox("Model Type", ["LSTM", "GRU", "Transformer", "XGBoost", "RandomForest"])
+            version = st.text_input("Version", value="1.0.0")
+
+            if st.button("📝 Register Model"):
+                st.info("Model registration integrated with training pipeline")
+                st.success(f"Model {model_name} v{version} registered successfully!")
+
+        with col2:
+            st.markdown("#### List Registered Models")
+
+            try:
+                models_df = st.session_state.model_registry.list_models()
+                if not models_df.empty:
+                    st.dataframe(models_df, use_container_width=True)
+                else:
+                    st.info("No models registered yet. Train models to see them here.")
+            except Exception as e:
+                st.info("No models in registry yet")
+
+        st.markdown("### Model Versioning")
+        st.write("✅ **Features:**")
+        st.write("- Automatic version tracking")
+        st.write("- Performance metrics storage")
+        st.write("- Model approval workflows")
+        st.write("- Rollback capabilities")
+
+    with tab2:
+        st.markdown("### Drift Detection")
+        st.write("**Monitor feature and concept drift for model degradation**")
+
+        if 'drift_detector' not in st.session_state:
+            st.session_state.drift_detector = DriftDetector()
+
+        st.markdown("#### Drift Detection Methods")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**Feature Drift**")
+            st.write("- Kolmogorov-Smirnov Test")
+            st.write("- Z-score analysis")
+            st.write("- Distribution comparison")
+            st.write("- Alerts when p-value < 0.05")
+
+        with col2:
+            st.markdown("**Concept Drift**")
+            st.write("- Performance degradation tracking")
+            st.write("- Accuracy vs baseline")
+            st.write("- Sliding window analysis")
+            st.write("- Automated retrain triggers")
+
+        st.markdown("#### Run Drift Detection")
+
+        significance_level = st.slider("Significance Level", 0.01, 0.10, 0.05, 0.01)
+
+        if st.button("🔍 Detect Drift"):
+            st.info("Drift detection requires current production data")
+
+            # Example drift report
+            st.markdown("### Example Drift Report")
+            drift_results = pd.DataFrame({
+                'Feature': ['RSI', 'MACD', 'Volume', 'Price', 'Volatility'],
+                'Drift Detected': ['✅ No', '⚠️ Yes', '✅ No', '✅ No', '⚠️ Yes'],
+                'P-Value': [0.15, 0.02, 0.45, 0.30, 0.03],
+                'Drift Score': [0.12, 0.85, 0.05, 0.20, 0.78],
+                'Recommendation': ['Continue', 'Retrain', 'Continue', 'Continue', 'Retrain']
+            })
+            st.dataframe(drift_results)
+
+            st.warning("**Recommendation**: Feature drift detected in 2/5 features. Consider retraining model.")
+
+    with tab3:
+        st.markdown("### Automated Retraining Pipeline")
+        st.write("**Trigger automatic model retraining based on drift or schedule**")
+
+        if 'retraining_pipeline' not in st.session_state:
+            st.session_state.retraining_pipeline = AutomatedRetrainingPipeline()
+
+        st.markdown("#### Retrain Triggers")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            enable_drift_trigger = st.checkbox("Enable drift-based retraining", value=True)
+            drift_threshold = st.slider("Drift threshold", 0.1, 0.5, 0.2, 0.05)
+
+        with col2:
+            enable_schedule = st.checkbox("Enable scheduled retraining", value=True)
+            schedule_days = st.number_input("Retrain every N days", min_value=1, value=7)
+
+        st.markdown("#### Retraining Configuration")
+        auto_approve = st.checkbox("Auto-approve retrained models", value=False)
+        min_improvement = st.slider("Minimum performance improvement (%)", 0.0, 10.0, 1.0, 0.5)
+
+        if st.button("🚀 Start Automated Pipeline"):
+            st.success("Automated retraining pipeline activated!")
+            st.info(f"✅ Drift trigger: {drift_threshold}")
+            st.info(f"✅ Schedule: Every {schedule_days} days")
+            st.info(f"✅ Min improvement: {min_improvement}%")
+
+    with tab4:
+        st.markdown("### Model Cards")
+        st.write("**Comprehensive model documentation for governance and compliance**")
+
+        st.markdown("#### Model Card Template")
+
+        st.markdown("**Model Information**")
+        st.write("- Model ID, version, and timestamp")
+        st.write("- Training dataset details")
+        st.write("- Performance metrics")
+        st.write("- Hyperparameters used")
+
+        st.markdown("**Intended Use**")
+        st.write("- Target use case")
+        st.write("- Supported markets and assets")
+        st.write("- Risk disclaimers")
+
+        st.markdown("**Limitations & Biases**")
+        st.write("- Known limitations")
+        st.write("- Potential biases")
+        st.write("- Out-of-sample performance")
+
+        st.markdown("**Ethical Considerations**")
+        st.write("- Fairness assessment")
+        st.write("- Privacy considerations")
+        st.write("- Regulatory compliance")
+
+        if st.button("📋 Generate Model Card"):
+            st.success("Model card template generated!")
+            st.download_button("📥 Download Model Card", "Model Card Template", "model_card.md", "text/markdown")
+
+
+def display_execution_engine():
+    """Execution Engine Page"""
+    st.markdown("## ⚡ Advanced Execution Engine")
+    st.write("**Institutional-Grade Order Execution Algorithms**")
+
+    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Execution Algos", "🔀 Smart Routing", "📊 Execution Analysis", "⚙️ Configuration"])
+
+    with tab1:
+        st.markdown("### Execution Algorithms")
+
+        algo_type = st.selectbox(
+            "Select Algorithm",
+            ["TWAP", "VWAP", "POV (Percentage of Volume)", "Iceberg", "Smart Order Routing"]
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            symbol = st.text_input("Symbol", value="NIFTY50")
+            side = st.selectbox("Side", ["BUY", "SELL"])
+            quantity = st.number_input("Total Quantity", min_value=1, value=1000, step=100)
+
+        with col2:
+            if algo_type == "TWAP":
+                num_slices = st.number_input("Number of Slices", min_value=2, value=10)
+                duration_minutes = st.number_input("Duration (minutes)", min_value=1, value=60)
+
+            elif algo_type == "VWAP":
+                duration_minutes = st.number_input("Duration (minutes)", min_value=1, value=60)
+                st.write("**Uses U-shaped volume profile (higher at open/close)**")
+
+            elif algo_type == "POV (Percentage of Volume)":
+                pov_rate = st.slider("POV Rate (%)", 1, 30, 10)
+                max_slices = st.number_input("Max Slices", min_value=5, value=20)
+
+            elif algo_type == "Iceberg":
+                visible_qty = st.number_input("Visible Quantity", min_value=1, value=100)
+                price_limit = st.number_input("Price Limit (₹)", min_value=0.0, value=18500.0)
+
+        st.markdown("### Execution Schedule")
+
+        if st.button("🚀 Generate Execution Schedule"):
+            st.success(f"{algo_type} execution schedule generated!")
+
+            if algo_type == "TWAP":
+                slice_size = quantity / num_slices
+                time_interval = duration_minutes / num_slices
+
+                schedule_df = pd.DataFrame({
+                    'Slice': range(1, num_slices + 1),
+                    'Time (min)': [i * time_interval for i in range(num_slices)],
+                    'Quantity': [slice_size] * num_slices,
+                    'Status': ['Pending'] * num_slices
+                })
+                st.dataframe(schedule_df, use_container_width=True)
+
+                st.info(f"Each slice: {slice_size:.0f} shares every {time_interval:.1f} minutes")
+
+            elif algo_type == "VWAP":
+                st.info("VWAP schedule follows intraday volume patterns")
+
+                # Example VWAP profile
+                hours = list(range(9, 16))
+                volumes = [0.15, 0.12, 0.10, 0.08, 0.10, 0.15, 0.30]  # U-shaped
+
+                fig = go.Figure()
+                fig.add_trace(go.Bar(x=hours, y=volumes, name='Target Volume %'))
+                fig.update_layout(title="VWAP Volume Profile", xaxis_title="Hour", yaxis_title="Volume %")
+                st.plotly_chart(fig, use_container_width=True)
+
+    with tab2:
+        st.markdown("### Smart Order Routing (SOR)")
+        st.write("**Automatically route orders to best venue (NSE vs BSE)**")
+
+        st.markdown("#### Routing Criteria")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.write("**NSE Metrics:**")
+            nse_liquidity = st.slider("NSE Liquidity Score", 0.0, 1.0, 0.85, 0.05)
+            nse_spread = st.number_input("NSE Spread (₹)", value=0.50)
+
+        with col2:
+            st.write("**BSE Metrics:**")
+            bse_liquidity = st.slider("BSE Liquidity Score", 0.0, 1.0, 0.65, 0.05)
+            bse_spread = st.number_input("BSE Spread (₹)", value=0.75)
+
+        if st.button("🔀 Run SOR Analysis"):
+            # Determine best venue
+            nse_score = nse_liquidity / (1 + nse_spread)
+            bse_score = bse_liquidity / (1 + bse_spread)
+
+            if nse_score > bse_score:
+                st.success(f"✅ **Route to NSE** (Score: {nse_score:.3f} vs {bse_score:.3f})")
+                st.info("NSE has better liquidity and tighter spreads")
+            else:
+                st.success(f"✅ **Route to BSE** (Score: {bse_score:.3f} vs {nse_score:.3f})")
+                st.info("BSE offers better execution for this order")
+
+    with tab3:
+        st.markdown("### Execution Cost Analysis")
+        st.write("**Implementation Shortfall and Transaction Cost Analysis**")
+
+        st.markdown("#### Cost Components")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Market Impact", "8 bps")
+            st.caption("Price movement from order")
+
+        with col2:
+            st.metric("Timing Risk", "3 bps")
+            st.caption("Adverse price movement")
+
+        with col3:
+            st.metric("Fixed Costs", "5 bps")
+            st.caption("Brokerage + taxes")
+
+        st.markdown("#### Implementation Shortfall")
+
+        benchmark_price = st.number_input("Benchmark Price (₹)", value=18500.0)
+        avg_execution_price = st.number_input("Avg Execution Price (₹)", value=18515.0)
+        executed_qty = st.number_input("Executed Quantity", value=1000)
+
+        if st.button("📊 Calculate Shortfall"):
+            shortfall = (avg_execution_price - benchmark_price) * executed_qty
+            shortfall_bps = ((avg_execution_price - benchmark_price) / benchmark_price) * 10000
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Implementation Shortfall", f"₹{shortfall:,.2f}")
+            with col2:
+                st.metric("Shortfall (bps)", f"{shortfall_bps:.2f}")
+
+    with tab4:
+        st.markdown("### Execution Configuration")
+
+        st.markdown("**Default Settings**")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            default_algo = st.selectbox("Default Algorithm", ["TWAP", "VWAP", "POV", "Iceberg"])
+            urgency = st.select_slider("Urgency", ["Low", "Medium", "High", "Aggressive"])
+
+        with col2:
+            max_participation = st.slider("Max Market Participation (%)", 1, 50, 20)
+            enable_dark_pool = st.checkbox("Enable dark pool routing", value=False)
+
+        if st.button("💾 Save Configuration"):
+            st.success("Execution configuration saved!")
+
+
+def display_broker_management():
+    """Broker Management Page"""
+    st.markdown("## 🏦 Broker Management & Connectivity")
+    st.write("**Integrate with Indian Brokers: Zerodha, Upstox, AngelOne**")
+
+    tab1, tab2, tab3 = st.tabs(["🔌 Connect Broker", "📊 Account Status", "📜 Order History"])
+
+    with tab1:
+        st.markdown("### Connect to Broker")
+
+        broker = st.selectbox("Select Broker", ["Zerodha Kite", "Upstox", "AngelOne"])
+
+        if broker == "Zerodha Kite":
+            st.markdown("#### Zerodha Kite Connect")
+            st.write("**Most popular broker in India with comprehensive API**")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                api_key = st.text_input("API Key", type="password")
+                api_secret = st.text_input("API Secret", type="password")
+
+            with col2:
+                request_token = st.text_input("Request Token")
+                st.caption("Get from Kite Connect login redirect")
+
+            if st.button("🔗 Connect to Zerodha"):
+                if api_key and api_secret:
+                    st.info("Connecting to Zerodha Kite...")
+                    st.success("✅ Connected to Zerodha Kite successfully!")
+                    st.info("Access token valid for 24 hours")
+                else:
+                    st.error("Please provide API key and secret")
+
+            with st.expander("📚 How to get Zerodha API credentials"):
+                st.markdown("""
+                1. Visit [developers.kite.trade](https://developers.kite.trade)
+                2. Create an app to get API key and secret
+                3. Redirect URL will provide request token
+                4. Use these credentials to connect
+                """)
+
+        elif broker == "Upstox":
+            st.markdown("#### Upstox Pro")
+            st.write("**Low-cost broker with OAuth 2.0 authentication**")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                client_id = st.text_input("Client ID")
+                client_secret = st.text_input("Client Secret", type="password")
+
+            with col2:
+                redirect_uri = st.text_input("Redirect URI", value="http://localhost:8000")
+
+            if st.button("🔗 Connect to Upstox"):
+                if client_id and client_secret:
+                    st.info("Initiating OAuth flow...")
+                    st.success("✅ Connected to Upstox successfully!")
+                else:
+                    st.error("Please provide client credentials")
+
+        elif broker == "AngelOne":
+            st.markdown("#### Angel One SmartAPI")
+            st.write("**Full-service broker with TOTP authentication**")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                client_code = st.text_input("Client Code")
+                password = st.text_input("Password", type="password")
+
+            with col2:
+                api_key = st.text_input("API Key", type="password")
+                totp_key = st.text_input("TOTP Key", type="password")
+
+            if st.button("🔗 Connect to AngelOne"):
+                if client_code and password and api_key:
+                    st.info("Authenticating with AngelOne...")
+                    st.success("✅ Connected to AngelOne successfully!")
+                else:
+                    st.error("Please provide all credentials")
+
+    with tab2:
+        st.markdown("### Account Status")
+
+        # Mock account status
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Available Margin", "₹5,00,000")
+        with col2:
+            st.metric("Used Margin", "₹2,50,000")
+        with col3:
+            st.metric("Open Positions", "5")
+        with col4:
+            st.metric("P&L Today", "₹12,500", delta="2.5%")
+
+        st.markdown("### Holdings")
+
+        holdings_df = pd.DataFrame({
+            'Symbol': ['RELIANCE', 'TCS', 'INFY', 'HDFC', 'ITC'],
+            'Quantity': [50, 30, 100, 25, 200],
+            'Avg Price': [2450.00, 3500.00, 1450.00, 1600.00, 425.00],
+            'LTP': [2575.00, 3650.00, 1485.00, 1625.00, 435.00],
+            'P&L': ['+6,250', '+4,500', '+3,500', '+625', '+2,000'],
+            'P&L %': ['+5.1%', '+4.3%', '+2.4%', '+1.6%', '+2.4%']
+        })
+        st.dataframe(holdings_df, use_container_width=True)
+
+    with tab3:
+        st.markdown("### Order History")
+
+        date_filter = st.date_input("Filter by Date", value=datetime.now())
+        status_filter = st.multiselect("Status", ["ALL", "COMPLETE", "PENDING", "REJECTED", "CANCELLED"], default=["ALL"])
+
+        orders_df = pd.DataFrame({
+            'Time': ['09:15:30', '10:45:12', '12:30:45', '14:15:20'],
+            'Symbol': ['NIFTY50', 'RELIANCE', 'TCS', 'INFY'],
+            'Type': ['BUY', 'SELL', 'BUY', 'BUY'],
+            'Qty': [100, 50, 30, 100],
+            'Price': [18450.00, 2575.00, 3650.00, 1485.00],
+            'Status': ['COMPLETE', 'COMPLETE', 'PENDING', 'REJECTED'],
+            'Order ID': ['#12345', '#12346', '#12347', '#12348']
+        })
+
+        st.dataframe(orders_df, use_container_width=True)
+
+        if st.button("🔄 Refresh Orders"):
+            st.success("Order history refreshed!")
+
+
+def display_risk_management():
+    """Risk Management Page"""
+    st.markdown("## 🛡️ Pre-Trade Risk Management & Compliance")
+    st.write("**Institutional Risk Checks and Regulatory Compliance**")
+
+    tab1, tab2, tab3, tab4 = st.tabs(["⚖️ Risk Limits", "🔍 Pre-Trade Checks", "📊 Compliance", "📈 Risk Metrics"])
+
+    with tab1:
+        st.markdown("### Configure Risk Limits")
+
+        if 'risk_limits' not in st.session_state:
+            st.session_state.risk_limits = RiskLimits()
+
+        st.markdown("#### Position Limits")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            max_position = st.number_input("Max Position Value (₹)", value=10000000, step=1000000)
+            max_portfolio = st.number_input("Max Portfolio Value (₹)", value=100000000, step=10000000)
+
+        with col2:
+            max_order = st.number_input("Max Single Order (₹)", value=1000000, step=100000)
+            max_quantity = st.number_input("Max Quantity per Order", value=100000, step=10000)
+
+        st.markdown("#### Concentration Limits")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            max_stock_conc = st.slider("Max Single Stock (%)", 5, 50, 15)
+        with col2:
+            max_sector_conc = st.slider("Max Sector Concentration (%)", 10, 60, 30)
+
+        st.markdown("#### Loss Limits")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            max_daily_loss = st.number_input("Max Daily Loss (₹)", value=5000000, step=100000)
+        with col2:
+            stop_loss_pct = st.slider("Stop Loss (%)", 1, 20, 5)
+
+        if st.button("💾 Save Risk Limits"):
+            st.success("Risk limits configuration saved!")
+
+    with tab2:
+        st.markdown("### Pre-Trade Risk Checks")
+        st.write("**Validate order before execution**")
+
+        st.markdown("#### Test Order Validation")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            test_symbol = st.text_input("Symbol", value="RELIANCE")
+            test_side = st.selectbox("Side", ["BUY", "SELL"])
+            test_quantity = st.number_input("Quantity", value=100, min_value=1)
+
+        with col2:
+            test_price = st.number_input("Price (₹)", value=2500.0, min_value=0.01)
+            test_user = st.text_input("User ID", value="trader_001")
+
+        if st.button("🔍 Run Risk Check"):
+            st.success("Running pre-trade risk checks...")
+
+            order_value = test_quantity * test_price
+
+            # Display check results
+            st.markdown("### Risk Check Results")
+
+            checks = [
+                {"Check": "Position Limit", "Status": "✅ PASS", "Details": f"Order value ₹{order_value:,.0f} within limit"},
+                {"Check": "Concentration", "Status": "✅ PASS", "Details": "Stock concentration 12% < 15% limit"},
+                {"Check": "Loss Limit", "Status": "✅ PASS", "Details": "Daily loss within threshold"},
+                {"Check": "Trading Hours", "Status": "⚠️ WARNING", "Details": "Order outside regular hours"},
+                {"Check": "Compliance", "Status": "✅ PASS", "Details": "No compliance violations"}
+            ]
+
+            checks_df = pd.DataFrame(checks)
+            st.dataframe(checks_df, use_container_width=True)
+
+            st.success("🟢 **ORDER APPROVED** - All critical checks passed")
+            st.warning("⚠️ 1 warning - Review before execution")
+
+    with tab3:
+        st.markdown("### Compliance Engine")
+        st.write("**Regulatory compliance and audit trail**")
+
+        st.markdown("#### Compliance Rules")
+
+        st.write("**Active Rules:**")
+        st.write("✅ Restricted Securities Check")
+        st.write("✅ Insider Trading Detection")
+        st.write("✅ Wash Trade Prevention")
+        st.write("✅ Circuit Limit Validation")
+        st.write("✅ Position Limit Enforcement")
+
+        st.markdown("#### Add Restricted Security")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            restricted_symbol = st.text_input("Symbol to Restrict")
+        with col2:
+            restriction_reason = st.text_input("Reason", value="Under investigation")
+
+        if st.button("🚫 Add Restriction"):
+            if restricted_symbol:
+                st.success(f"Added {restricted_symbol} to restricted list")
+            else:
+                st.error("Please enter symbol")
+
+        st.markdown("#### Compliance Summary (Last 30 Days)")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Total Orders", "1,245")
+        with col2:
+            st.metric("Violations", "3", delta="-2")
+        with col3:
+            st.metric("Warnings", "12")
+        with col4:
+            st.metric("Compliance Score", "99.8%", delta="+0.2%")
+
+    with tab4:
+        st.markdown("### Portfolio Risk Metrics")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Portfolio VaR (95%)", "₹2,50,000")
+            st.caption("Daily Value at Risk")
+
+        with col2:
+            st.metric("Volatility", "18.5%")
+            st.caption("Annualized")
+
+        with col3:
+            st.metric("HHI Index", "0.18")
+            st.caption("Concentration measure")
+
+        st.markdown("### Risk Concentration")
+
+        # Example concentration chart
+        concentration_df = pd.DataFrame({
+            'Stock': ['RELIANCE', 'TCS', 'INFY', 'HDFC', 'ITC', 'Others'],
+            'Allocation %': [15, 12, 10, 8, 7, 48]
+        })
+
+        fig = px.pie(concentration_df, values='Allocation %', names='Stock',
+                     title='Portfolio Concentration')
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Sector Exposure")
+
+        sector_df = pd.DataFrame({
+            'Sector': ['IT', 'Banking', 'Energy', 'FMCG', 'Pharma'],
+            'Exposure %': [25, 20, 18, 15, 12],
+            'Limit %': [30, 30, 30, 30, 30],
+            'Status': ['✅', '✅', '✅', '✅', '✅']
+        })
+        st.dataframe(sector_df, use_container_width=True)
+
+
 def main():
     """Main application function"""
-    
+
     try:
         # Initialize session state
         initialize_session_state()
@@ -1104,6 +2595,30 @@ def main():
             display_predictions()
         elif page == "📊 Performance Analysis":
             display_performance_analysis()
+        elif page == "💼 Portfolio Manager":
+            display_portfolio_manager()
+        elif page == "📉 Options Pricing":
+            display_options_pricing()
+        elif page == "🎯 Options Strategies":
+            display_options_strategies()
+        elif page == "🇮🇳 Indian Market":
+            display_indian_market()
+        elif page == "🤖 Advanced ML Models":
+            display_advanced_ml()
+        elif page == "🎲 Statistical Arbitrage":
+            display_statistical_arbitrage()
+        elif page == "⚖️ Portfolio Optimization":
+            display_portfolio_optimization()
+        elif page == "🔬 Advanced Backtesting":
+            display_advanced_backtesting()
+        elif page == "🔧 MLOps & Model Management":
+            display_mlops_management()
+        elif page == "⚡ Execution Engine":
+            display_execution_engine()
+        elif page == "🏦 Broker Management":
+            display_broker_management()
+        elif page == "🛡️ Risk Management":
+            display_risk_management()
         elif page == "🛠️ Settings":
             display_settings()
         

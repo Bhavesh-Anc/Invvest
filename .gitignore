@@ -6,6 +6,7 @@ config/secrets.py
 *.pem
 *.env
 .env
+.kite/
 
 # Data & Databases  
 data/*.db
@@ -16,8 +17,8 @@ data/*.sqlite3
 !**/sample*.csv
 
 # Model Files & Cache
-models/
-cache/
+/models/
+/cache/
 *.pkl
 *.joblib
 *.h5
